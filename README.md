@@ -2,6 +2,14 @@
 
 Personal configuration for [Claude Code](https://claude.ai/claude-code) — Anthropic's CLI for Claude.
 
+## Installing skills
+
+Install skills from this repo with:
+
+```sh
+npx skills@latest add danievanzyl/code-skills
+```
+
 ## Structure
 
 | Path | Description |
