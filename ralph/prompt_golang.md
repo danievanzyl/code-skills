@@ -17,19 +17,19 @@ If all AFK tasks are complete, output <promise>NO MORE TASKS</promise>.
 
 Pick the next task. Prioritize tasks in this order:
 
-1. Critical bugfixes
-2. Development infrastructure
+- Critical bugfixes
+- Development infrastructure
 
-Getting development infrastructure like tests and types and dev scripts ready is an important precursor to building features.
+  Getting development infrastructure like tests and types and dev scripts ready is an important precursor to building features.
 
-1. Tracer bullets for new features
+- Tracer bullets for new features
 
-Tracer bullets are small slices of functionality that go through all layers of the system, allowing you to test and validate your approach early. This helps in identifying potential issues and ensures that the overall architecture is sound before investing significant time in development.
+  Tracer bullets are small slices of functionality that go through all layers of the system, allowing you to test and validate your approach early. This helps in identifying potential issues and ensures that the overall architecture is sound before investing significant time in development.
 
-TL;DR - build a tiny, end-to-end slice of the feature first, then expand it out.
+  TL;DR - build a tiny, end-to-end slice of the feature first, then expand it out.
 
-1. Polish and quick wins
-2. Refactors
+- Polish and quick wins
+- Refactors
 
 # EXPLORATION
 

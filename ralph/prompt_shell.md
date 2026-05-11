@@ -1,7 +1,6 @@
 # BEFORE STARTING
 
 Use /caveman skill
-Use /mastra skill
 
 # ISSUES
 
@@ -18,15 +17,15 @@ If all AFK tasks are complete, output <promise>NO MORE TASKS</promise>.
 Pick the next task. Prioritize tasks in this order:
 
 - Critical bugfixes
-- Development infrastructure
+- Shell script testing infrastructure
 
-  Getting development infrastructure like tests and types and dev scripts ready is an important precursor to building features.
+  Getting test infrastructure like shellcheck, bats/shunit2, and dev scripts ready is an important precursor to building features.
 
 - Tracer bullets for new features
 
-  Tracer bullets are small slices of functionality that go through all layers of the system, allowing you to test and validate your approach early. This helps in identifying potential issues and ensures that the overall architecture is sound before investing significant time in development.
+  Tracer bullets are small slices of functionality that go through all layers of the system, allowing you to test and validate your approach early. This helps in identifying potential issues and ensures the script handles edge cases properly before investing significant time in development.
 
-  TL;DR - build a tiny, end-to-end slice of the feature first, then expand it out.
+  TL;DR - test a tiny, end-to-end slice of the script first, then expand coverage.
 
 - Polish and quick wins
 - Refactors
@@ -43,8 +42,9 @@ Use /tdd to complete the task.
 
 Before committing, run the feedback loops:
 
-- `npm run test` to run the tests
-- `npm run typecheck` to run the type checker
+- `shellcheck` (or `npx shellcheck`) to lint shell scripts
+- `bats` or `shunit2` test suites (or whichever test framework is in use)
+- Run the script itself in dry-run or with minimal input to verify basic execution
 
 # COMMIT
 
