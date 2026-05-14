@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_BASE="${REPO_BASE:-$HOME/code/ritdu}"
+
+selected="${1:-}"
+if [[ -z "$selected" ]]; then
+  selected=$(fd . "$REPO_BASE" -td -d 1 | fzf --prompt='project> ')
+fi
+[[ -z "$selected" ]] && exit 0
+
+name=$(basename "$selected")
+src_dir="$selected/src"
+
+if [[ ! -d "$src_dir" ]]; then
+  echo "no src/ in $selected" >&2
+  exit 1
+fi
+
+if ! tmux has-session -t="$name" 2>/dev/null; then
+  tmux new-session -ds "$name" -n src -c "$src_dir"
+  tmux split-window -h -l 40% -t "$name:src" -c "$src_dir"
+  tmux split-window -v -t "$name:src" -c "$src_dir"
+  tmux select-pane -t "$name:src" -L
+fi
+
+if [[ -n "${TMUX:-}" ]]; then
+  tmux switch-client -t "$name"
+else
+  tmux attach -t "$name"
+fi

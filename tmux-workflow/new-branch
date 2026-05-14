@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -z "${1:-}" ]]; then
+  echo "usage: new-branch <branch-name>" >&2
+  exit 1
+fi
+
+if [[ -z "${TMUX:-}" ]]; then
+  echo "must be run inside a tmux session (sessionizer first)" >&2
+  exit 1
+fi
+
+branch="$1"
+project=$(tmux display-message -p '#S')
+REPO_BASE="${REPO_BASE:-$HOME/code/ritdu}"
+project_dir="$REPO_BASE/$project"
+src_dir="$project_dir/src"
+worktree_dir="$project_dir/$branch"
+
+if [[ ! -d "$src_dir" ]]; then
+  echo "no src/ in $project_dir — is the session name a project dir under $REPO_BASE?" >&2
+  exit 1
+fi
+
+if [[ -e "$worktree_dir" ]]; then
+  echo "$worktree_dir already exists" >&2
+  exit 1
+fi
+
+git -C "$src_dir" worktree add "$worktree_dir" -b "$branch"
+
+window_id=$(tmux new-window -t "$project:" -n "$branch" -c "$worktree_dir" -P -F '#{window_id}')
+tmux split-window -h -l 40% -t "$window_id" -c "$worktree_dir"
+tmux split-window -v -t "$window_id" -c "$worktree_dir"
+tmux select-pane -t "$window_id" -L
+tmux send-keys -t "$window_id" "claude" Enter
+
+stamp_dir="$HOME/.cache/tmux-worktrees"
+mkdir -p "$stamp_dir"
+cat >"$stamp_dir/${window_id#@}" <<EOF
+WORKTREE="$worktree_dir"
+BRANCH="$branch"
+PROJECT="$project"
+EOF

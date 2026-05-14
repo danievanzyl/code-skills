@@ -1,0 +1,26 @@
+# === tmux-workflow start ===
+# Append-only block. The install.sh script replaces everything between the
+# start/end markers, so don't edit by hand — edit tmux.conf.snippet in the
+# tmux-workflow drafts and re-run install.sh.
+
+# Auto-cleanup hook: fires once when a window is removed (last pane dies or kill-window).
+# Safe by construction — close-branch only deletes when `gh pr view` reports MERGED.
+set-hook -g window-unlinked 'run-shell "~/bin/close-branch #{hook_window}"'
+
+# Manual cleanup of current window's worktree
+bind X run-shell "~/bin/close-branch"
+
+# Project switcher (fzf popup)
+bind T display-popup -E "~/bin/sessionizer"
+
+# New branch + worktree (prompts for branch name)
+bind N command-prompt -p "branch:" "run-shell '~/bin/new-branch \"%1\"'"
+
+# Pick an existing worktree (fzf popup) — opens window or switches to it
+bind O display-popup -E "~/bin/open-worktree"
+
+# PR check status in window list (adaptive polling, caches per-SHA)
+set -g status-interval 5
+set -g window-status-format         "#I:#W#F #(~/bin/pr-status #{pane_current_path})"
+set -g window-status-current-format "#[bold]#I:#W#F#[nobold] #(~/bin/pr-status #{pane_current_path})"
+# === tmux-workflow end ===

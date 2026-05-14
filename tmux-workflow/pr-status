@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# pr-status <worktree-path>  →  prints aggregate CI icon for the PR on this branch.
+# Adaptive polling: cache keyed by commit SHA. Terminal states (SUCCESS/FAILURE/NONE)
+# are cached forever; PENDING re-fetches after TTL. New commit = new SHA = fresh fetch.
+set -euo pipefail
+
+wt="${1:-$PWD}"
+[[ -d "$wt" ]] || exit 0
+cd "$wt" 2>/dev/null || exit 0
+git rev-parse --git-dir >/dev/null 2>&1 || exit 0
+
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || exit 0
+[[ "$branch" =~ ^(main|master|HEAD)$ ]] && exit 0
+
+sha=$(git rev-parse HEAD 2>/dev/null) || exit 0
+
+cache_dir="$HOME/.cache/tmux-pr-checks"
+cache="$cache_dir/$sha"
+mkdir -p "$cache_dir"
+
+TTL=60
+
+if [[ -f "$cache" ]]; then
+  # shellcheck disable=SC1090
+  . "$cache"
+  case "${STATE:-}" in
+    SUCCESS|FAILURE|NONE)
+      printf '%s\n' "${ICON:-}"; exit 0 ;;
+    PENDING)
+      age=$(( $(date +%s) - $(stat -f %m "$cache") ))
+      if (( age < TTL )); then
+        printf '%s\n' "${ICON:-}"; exit 0
+      fi
+      ;;
+  esac
+fi
+
+json=$(gh pr checks "$branch" --json state 2>/dev/null) || json=""
+if [[ -z "$json" ]]; then
+  printf 'STATE=NONE\nICON='\'''\''\n' >"$cache"
+  exit 0
+fi
+
+if echo "$json" | jq -e 'any(.[]; .state=="FAILURE" or .state=="ERROR" or .state=="CANCELLED")' >/dev/null; then
+  STATE=FAILURE
+  ICON='#[fg=brightwhite,bg=red,bold] ✗ #[default]'
+elif echo "$json" | jq -e 'any(.[]; .state=="PENDING" or .state=="QUEUED" or .state=="IN_PROGRESS" or .state=="EXPECTED")' >/dev/null; then
+  STATE=PENDING
+  ICON='#[fg=black,bg=yellow,bold] ⏳ #[default]'
+elif echo "$json" | jq -e 'length > 0 and all(.[]; .state=="SUCCESS")' >/dev/null; then
+  STATE=SUCCESS
+  ICON='#[fg=brightwhite,bg=green,bold] ✓ #[default]'
+else
+  STATE=NONE
+  ICON=''
+fi
+
+cat >"$cache" <<EOF
+STATE=$STATE
+ICON='$ICON'
+EOF
+printf '%s\n' "$ICON"
