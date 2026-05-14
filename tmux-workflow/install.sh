@@ -44,7 +44,7 @@ install_scripts() {
   say "installing scripts to $BIN_DIR"
   mkdir -p "$BIN_DIR"
   for s in "${SCRIPTS[@]}"; do
-    install -m 0755 "$SCRIPT_DIR/$s" "$BIN_DIR/$s"
+    /usr/bin/install -m 0755 "$SCRIPT_DIR/$s" "$BIN_DIR/$s"
     printf '   %s\n' "$BIN_DIR/$s"
   done
 }
