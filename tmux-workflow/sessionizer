@@ -1,11 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_BASE="${REPO_BASE:-$HOME/code/ritdu}"
+CODE_ROOT="${CODE_ROOT:-$HOME/code}"
 
-selected="${1:-}"
+toplevel="${1:-}"
+if [[ -z "$toplevel" ]]; then
+  toplevel=$(fd . "$CODE_ROOT" -td -d 1 -x basename | fzf --prompt='toplevel> ')
+fi
+[[ -z "$toplevel" ]] && exit 0
+
+REPO_BASE="$CODE_ROOT/$toplevel"
+if [[ ! -d "$REPO_BASE" ]]; then
+  echo "no such dir: $REPO_BASE" >&2
+  exit 1
+fi
+
+selected="${2:-}"
 if [[ -z "$selected" ]]; then
-  selected=$(fd . "$REPO_BASE" -td -d 1 | fzf --prompt='project> ')
+  selected=$(fd . "$REPO_BASE" -td -d 1 | fzf --prompt="${toplevel}> ")
 fi
 [[ -z "$selected" ]] && exit 0
 
@@ -23,6 +35,8 @@ if ! tmux has-session -t="$name" 2>/dev/null; then
   tmux split-window -v -t "$name:src" -c "$src_dir"
   tmux select-pane -t "$name:src" -L
 fi
+
+tmux set-environment -t "$name" PROJECT_DIR "$selected"
 
 if [[ -n "${TMUX:-}" ]]; then
   tmux switch-client -t "$name"

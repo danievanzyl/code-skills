@@ -9,8 +9,11 @@ if [[ -z "${TMUX:-}" ]]; then
 fi
 
 project=$(tmux display-message -p '#S')
-REPO_BASE="${REPO_BASE:-$HOME/code/ritdu}"
-project_dir="$REPO_BASE/$project"
+project_dir=$(tmux show-environment -t "$project" PROJECT_DIR 2>/dev/null | cut -d= -f2-)
+if [[ -z "$project_dir" ]]; then
+  echo "PROJECT_DIR not set on session $project — re-run sessionizer" >&2
+  exit 1
+fi
 src_dir="$project_dir/src"
 
 if [[ ! -d "$src_dir" ]]; then
