@@ -8,7 +8,7 @@ allowed-tools: Bash(git:*), Bash(gh:*)
 Dispatch the `code-reviewer` subagent with the following context already gathered:
 
 **Branch**: !`git rev-parse --abbrev-ref HEAD`
-**Issue**: #$1 — $2
+**Issue**: $ARGUMENTS
 
 **Recent commits**:
 !`git log -n 10 --format="%H%n%ad%n%B---" --date=short`
