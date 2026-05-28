@@ -2,25 +2,23 @@
 set -euo pipefail
 cd "$CLAUDE_PROJECT_DIR"
 
+echo "$(date -Iseconds) afk-handoff fired, args=$*, cwd=$(pwd)" >>/tmp/claude-hooks.log
+
 branch=$(git rev-parse --abbrev-ref HEAD)
 worktree=$(git rev-parse --show-toplevel)
 
-# Primary: parse from branch name
-issue=$(echo "$branch" | grep -oP '/\K\d+' | head -1 || true)
+# Branch name → issue number (e.g. feat/142-foo → 142)
+issue=$(echo "$branch" | sed -nE 's|.*/([0-9]+)-.*|\1|p')
 
-# Fallback: parse from commit trailer
+# Commit trailer fallback
 if [[ -z "$issue" ]]; then
-  issue=$(git log -1 --format=%B | grep -oP '^Refs: #\K\d+' || true)
+  issue=$(git log -1 --format=%B | sed -nE 's/^Refs: #([0-9]+).*/\1/p')
 fi
 
-# Fallback: parse from PR if it exists
+# PR fallback
 if [[ -z "$issue" ]]; then
-  issue=$(gh pr view --json body,title -q '.title + " " + .body' 2>/dev/null | grep -oP '#\K\d+' | head -1 || true)
-fi
-
-if [[ -z "$issue" ]]; then
-  echo "afk-handoff: could not determine issue ID for branch ${branch}" >&2
-  exit 0 # don't block, just skip handoff
+  issue=$(gh pr view --json body,title -q '.title + " " + .body' 2>/dev/null |
+    sed -nE 's/.*#([0-9]+).*/\1/p' | head -1)
 fi
 
 pr=$(gh pr list --head "$branch" --json number -q '.[0].number' 2>/dev/null || echo "")

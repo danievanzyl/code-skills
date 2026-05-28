@@ -13,11 +13,25 @@ Review the code changes on the current branch for the issue named in your invoca
 
 # CONTEXT
 
-Gather context before reviewing. Run these commands and read their output:
+## Locate the right branch and worktree
+
+Given the issue number from your invocation, find the branch and worktree in this order:
+
+1. Read `.claude/state/issue-<number>.json` if it exists — use `branch` and `worktree` fields verbatim
+2. Else: `gh pr list --search "#<number>" --json headRefName,number` and check out the head branch
+3. Else: `git branch -a | grep -E "/<number>-"` and use the first match
+4. Else: stop and report "cannot locate branch for issue #<number>"
+
+`cd` to the worktree path before running any git, gh, or npm commands.
+
+## Gather review context
+
+Once on the right branch, run these and read the output:
 
 - `git log -n 10 --format="%H%n%ad%n%B---" --date=short` — recent commits
-- `gh issue view <issue-number>` — issue details (number passed in invocation)
+- `gh issue view <number>` — issue details
 - `git diff main..HEAD` — full diff against main
+  `git diff main..HEAD` — full diff against main
 
 # REVIEW PROCESS
 

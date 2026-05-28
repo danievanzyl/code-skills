@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$CLAUDE_PROJECT_DIR"
 
 branch=$(git rev-parse --abbrev-ref HEAD)
-issue=$(echo "$branch" | grep -oP '/\K\d+' | head -1 || echo "")
+issue=$(echo "$branch" | sed -nE 's|.*/([0-9]+)-.*|\1|p')
 [[ -z "$issue" ]] && exit 0 # no issue ID parseable, nothing to add
 
 # Only amend if trailer not already present
