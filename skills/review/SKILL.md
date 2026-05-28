@@ -10,13 +10,4 @@ Dispatch the `code-reviewer` subagent with the following context already gathere
 **Branch**: !`git rev-parse --abbrev-ref HEAD`
 **Issue**: $ARGUMENTS
 
-**Recent commits**:
-!`git log -n 10 --format="%H%n%ad%n%B---" --date=short`
-
-**Issue details**:
-!`gh issue view $1`
-
-**Diff vs main**:
-!`git diff main..HEAD`
-
 Tell the subagent: the branch, issue number, and issue title are above. Proceed with the standard review process from your system prompt.
