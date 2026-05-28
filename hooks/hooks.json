@@ -1,0 +1,35 @@
+{
+  "PreToolUse": [
+    {
+      "matcher": "Bash",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "${CLAUDE_PLUGIN_ROOT}/hooks/validate-branch-name.sh"
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": "Bash(git commit*)",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "${CLAUDE_PLUGIN_ROOT}/hooks/add-refs-trailer.sh"
+        }
+      ]
+    }
+  ],
+  "SubagentStop": [
+    {
+      "matcher": "afk-task-runner",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "${CLAUDE_PLUGIN_ROOT}/hooks/afk-handoff.sh"
+        }
+      ]
+    }
+  ]
+}
