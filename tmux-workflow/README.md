@@ -15,8 +15,8 @@ Requires: `tmux >= 3.4` (for `split-window -l <pct>%`), `fd`, `fzf`, `gh` (authe
 
 ## Use
 
-- `prefix-T` → fzf popup → pick project → tmux session created (or attached) with a 3-pane `src` window.
-- Inside a project session: `new-branch fix-login-redirect` → creates worktree at `~/code/ritdu/<project>/fix-login-redirect`, opens new tmux window with claude + 2 terms.
+- `prefix-T` → fzf toplevel (dirs under `~/code`) → fzf project → tmux session created (or attached) with a 3-pane `src` window.
+- Inside a project session: `new-branch fix-login-redirect` → creates worktree at `~/code/<toplevel>/<project>/fix-login-redirect`, opens new tmux window with claude + 2 terms.
 - `prefix-X` → cleanup current window's worktree (only deletes if PR is merged on GitHub).
 - Auto: when a window dies (last pane closed or `kill-window`), `window-unlinked` hook runs `close-branch` silently — same PR-merged gate.
 
@@ -26,7 +26,7 @@ Requires: `tmux >= 3.4` (for `split-window -l <pct>%`), `fd`, `fzf`, `gh` (authe
 
 ## Files
 
-- `sessionizer` — project switcher (fzf over `$REPO_BASE`, default `~/code/ritdu`).
+- `sessionizer [toplevel] [project]` — project switcher; no args = two-stage fzf over `$CODE_ROOT` (default `~/code`).
 - `new-branch` — branch creator (worktree + window + panes + claude).
 - `close-branch` — cleanup script, handles both manual (`prefix-X`) and hook (`window-unlinked`) entry points.
 - `tmux.conf.snippet` — hook + bindings, append to `~/.tmux.conf`.

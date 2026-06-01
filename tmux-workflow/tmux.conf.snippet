@@ -10,7 +10,7 @@ set-hook -g window-unlinked 'run-shell "~/bin/close-branch #{hook_window}"'
 # Manual cleanup of current window's worktree
 bind X run-shell "~/bin/close-branch"
 
-# Project switcher (fzf popup)
+# Project switcher (fzf popup) — two-stage: toplevel under ~/code, then project
 bind T display-popup -E "~/bin/sessionizer"
 
 # New branch + worktree (prompts for branch name)

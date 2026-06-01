@@ -99,7 +99,7 @@ main() {
   cat <<EOF
 
 Keybinds (prefix is whatever you have configured — your conf shows Ctrl-Space):
-  prefix-T   project switcher (sessionizer)
+  prefix-T   project switcher (sessionizer) — fzf toplevel then project
   prefix-N   new branch + worktree (prompts for name)
   prefix-O   open existing worktree (fzf popup)
   prefix-X   cleanup current window's worktree (only if PR is MERGED)
