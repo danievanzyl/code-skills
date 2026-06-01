@@ -48,12 +48,16 @@ Use /tdd to complete the task.
 
 # FEEDBACK LOOPS
 
-Before committing, run the feedback loops:
+Before committing, run the project's test and type/lint checks. Discover the commands in this order:
 
-- `npm run test` to run the tests
-- `npm run typecheck` to run the type checker
-
-or use the bun equivalent
+1. `.claude/state/feedback-cmds.json` if it exists — use its `test` and `check` fields verbatim
+2. Else infer from the project manifest:
+   - `package.json` scripts → `npm run test` + `npm run typecheck` (or the `bun` equivalent)
+   - `go.mod` → `go test ./...` + `go vet ./...`
+   - `pyproject.toml` → `pytest` + `mypy` (or `ruff check`)
+   - `Cargo.toml` → `cargo test` + `cargo clippy`
+   - `Makefile` → `make test` + `make check`/`make lint`
+3. Else ask which commands to run
 
 # COMMIT
 

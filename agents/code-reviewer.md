@@ -31,7 +31,21 @@ Once on the right branch, run these and read the output:
 - `git log -n 10 --format="%H%n%ad%n%B---" --date=short` — recent commits
 - `gh issue view <number>` — issue details
 - `git diff main..HEAD` — full diff against main
-  `git diff main..HEAD` — full diff against main
+
+## Determine the feedback commands
+
+Discover the project's test and type/lint commands in this order:
+
+1. `.claude/state/feedback-cmds.json` if it exists — use its `test` and `check` fields verbatim
+2. Else infer from the project manifest:
+   - `package.json` scripts → `npm run test` + `npm run typecheck` (or the `bun` equivalent)
+   - `go.mod` → `go test ./...` + `go vet ./...`
+   - `pyproject.toml` → `pytest` + `mypy` (or `ruff check`)
+   - `Cargo.toml` → `cargo test` + `cargo clippy`
+   - `Makefile` → `make test` + `make check`/`make lint`
+3. Else ask which commands to run
+
+Use these discovered commands wherever the steps below say "test" or "type/lint check".
 
 # REVIEW PROCESS
 
@@ -83,11 +97,11 @@ Never change what the code does — only how it does it. All original features, 
 
 # EXECUTION
 
-1. Run `npm run typecheck` and `npm run test` first to confirm the current state passes
+1. Run the discovered type/lint check and test commands first to confirm the current state passes
 2. Attempt to reproduce the original bug with new test cases — if you can, fix it
 3. Write edge case tests that stress the implementation
 4. Make any code quality improvements directly on the current branch
-5. Run `npm run typecheck` and `npm run test` again to ensure nothing is broken
+5. Run the type/lint check and test commands again to ensure nothing is broken
 6. Commit with a message starting with `RALPH: Review -` describing the refinements
 
 If the code is already clean, well-tested, and handles edge cases properly, do nothing.
