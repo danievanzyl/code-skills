@@ -1,0 +1,104 @@
+name: release
+
+# Auto-versioning for the marketplace plugin. On every push to main:
+#   1. validate the manifests parse
+#   2. pick the next version (auto patch-bump, or honor a manual bump in plugin.json)
+#   3. write it into plugin.json + marketplace.json so all version fields agree
+#   4. commit the bump (with [skip ci] to avoid re-triggering), tag v<version>, release
+#
+# GitHub Actions natively skips runs whose head commit message contains "[skip ci]",
+# so the bump commit this workflow pushes will NOT trigger another run.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full history + tags for version comparison
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate manifests
+        run: |
+          jq empty plugin.json
+          jq empty .claude-plugin/marketplace.json
+          # required fields must be present
+          test "$(jq -r '.name // empty' plugin.json)" != ""
+          test "$(jq -r '.version // empty' plugin.json)" != ""
+          test "$(jq -r '.metadata.version // empty' .claude-plugin/marketplace.json)" != ""
+
+      - name: Compute next version
+        id: ver
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+
+          manifest_v=$(jq -r '.version' plugin.json)
+          latest_tag=$(git tag --list 'v*' | sed 's/^v//' | sort -V | tail -1)
+          [ -z "$latest_tag" ] && latest_tag="0.0.0"
+
+          # If plugin.json is already ahead of the latest tag, the human made a
+          # deliberate (minor/major) bump — honor it verbatim. Otherwise auto-bump patch.
+          highest=$(printf '%s\n%s\n' "$manifest_v" "$latest_tag" | sort -V | tail -1)
+          if [ "$manifest_v" != "$latest_tag" ] && [ "$highest" = "$manifest_v" ]; then
+            next="$manifest_v"
+            echo "Manual bump detected: plugin.json=$manifest_v > latest tag=$latest_tag"
+          else
+            IFS=. read -r ma mi pa <<< "$latest_tag"
+            next="$ma.$mi.$((pa + 1))"
+            echo "Auto patch-bump: $latest_tag -> $next"
+          fi
+
+          if git rev-parse "v$next" >/dev/null 2>&1; then
+            echo "Tag v$next already exists — nothing to release."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+
+      - name: Write version into manifests
+        if: steps.ver.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          v="${{ steps.ver.outputs.next }}"
+
+          tmp=$(mktemp)
+          jq --arg v "$v" '.version = $v' plugin.json > "$tmp" && mv "$tmp" plugin.json
+
+          tmp=$(mktemp)
+          jq --arg v "$v" '.metadata.version = $v | .plugins |= map(if .source == "./" then .version = $v else . end)' \
+            .claude-plugin/marketplace.json > "$tmp" && mv "$tmp" .claude-plugin/marketplace.json
+
+      - name: Commit, tag, and release
+        if: steps.ver.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          v="${{ steps.ver.outputs.next }}"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if ! git diff --quiet -- plugin.json .claude-plugin/marketplace.json; then
+            git add plugin.json .claude-plugin/marketplace.json
+            git commit -m "chore(release): v$v [skip ci]"
+            git push origin HEAD:main
+          fi
+
+          git tag -a "v$v" -m "Release v$v"
+          git push origin "v$v"
+
+          gh release create "v$v" --title "v$v" --generate-notes
