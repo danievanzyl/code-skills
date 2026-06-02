@@ -5,10 +5,7 @@ description: Drives a feature-branch fan-in — implements a set of ready-for-ag
 
 # Feature-branch fan-in
 
-Orchestration glue, not a reimplementation. It chains agents/skills you already
-have — `afk-task-runner`, `code-reviewer` (or `/review`), `git-worktree` — and
-contributes the wiring + the seven gotchas below. Do not re-grill designs or
-re-write issues here; those are upstream (`grill-with-docs`, `to-issues`).
+Orchestration glue, not a reimplementation. It chains agents/skills you already have — `afk-task-runner`, `code-reviewer` (or `/review`), `git-worktree` — and contributes the wiring + the seven gotchas below. Do not re-grill designs or re-write issues here; those are upstream (`grill-with-docs`, `to-issues`).
 
 ## Preconditions (verify before starting)
 
@@ -19,20 +16,16 @@ re-write issues here; those are upstream (`grill-with-docs`, `to-issues`).
 
 ## Parameters — resolve these first, never hardcode
 
-| Param | Source |
-|-------|--------|
-| feature branch | the user / current branch |
-| gh account | memory or CLAUDE.md (e.g. account routing per org) |
-| ready-for-agent label | memory or CLAUDE.md; ask if unknown |
-| issue list + order | the user; else `gh issue list --label <label>` |
+| Param                 | Source                                             |
+| --------------------- | -------------------------------------------------- |
+| feature branch        | the user / current branch                          |
+| gh account            | memory or CLAUDE.md (e.g. account routing per org) |
+| ready-for-agent label | memory or CLAUDE.md; ask if unknown                |
+| issue list + order    | the user; else `gh issue list --label <label>`     |
 
 ## Order decision (gotcha 5)
 
-Inspect whether the issues touch overlapping files (`gh issue view`, or grep the
-file pointers in each issue). **Overlapping ⇒ sequential with merge-between**
-(each agent builds on the prior). **Independent ⇒ may run in parallel.** When
-unsure, default to sequential — it's slower but never conflicts. State the
-choice and why.
+Inspect whether the issues touch overlapping files (`gh issue view`, or grep the file pointers in each issue). **Overlapping ⇒ sequential with merge-between** (each agent builds on the prior). **Independent ⇒ may run in parallel.** When unsure, default to sequential — it's slower but never conflicts. State the choice and why.
 
 ## The loop (per issue)
 
@@ -51,5 +44,4 @@ choice and why.
 
 ## The seven gotchas + agent-prompt templates
 
-See [REFERENCE.md](REFERENCE.md) — the why behind each gotcha (so you don't
-"simplify" them away) and copy-paste prompt templates for both agents.
+See [REFERENCE.md](REFERENCE.md) — the why behind each gotcha (so you don't "simplify" them away) and copy-paste prompt templates for both agents.
