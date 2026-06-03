@@ -2,8 +2,6 @@
 set -euo pipefail
 cd "$CLAUDE_PROJECT_DIR"
 
-echo "$(date -Iseconds) afk-handoff fired, args=$*, cwd=$(pwd)" >>/tmp/claude-hooks.log
-
 branch=$(git rev-parse --abbrev-ref HEAD)
 worktree=$(git rev-parse --show-toplevel)
 
