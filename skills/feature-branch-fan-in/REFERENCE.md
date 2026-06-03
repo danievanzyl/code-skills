@@ -101,8 +101,8 @@ gh pr create --repo <owner>/<repo> --base main --head <feature-branch> \
 
 ## When NOT to use this skill
 
-- A single issue → just spawn the afk-task-runner directly and `/review`; no
-  feature branch needed.
+- A single issue → use the `afk-issue` skill (runner + reviewer + one PR, base
+  main by default); no feature branch needed.
 - Design not yet locked → run `grill-with-docs` first.
 - No issues yet → `to-issues` first.
 - Issues are fully independent and you want them straight on main → skip the
