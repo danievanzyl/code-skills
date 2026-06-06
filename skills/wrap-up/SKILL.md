@@ -51,21 +51,32 @@ This is the one hard gate. Everything after destroys local state, so never skip 
 
 ### 2. Close the worktree + branch (delegate to `git-worktree`)
 
-Invoke the **git-worktree** skill's "close worktree" path. It already does this cautiously:
+Invoke the **git-worktree** skill's "close worktree" path. It runs one bundled helper,
+`scripts/close-worktree.sh`, which does the whole cautious sequence in one call:
 
-1. re-checks PR is `MERGED`
-2. warns on uncommitted changes in the worktree
-3. `git worktree remove --force <path>`
-4. `git branch -d <branch>` (plain `-d` — refuses if not merged; surface to user, never auto-`-D`)
-5. `git worktree prune`
+1. re-checks the PR is `MERGED` (the gate that makes any force-delete safe) — refuses an `OPEN` PR; refuses a `CLOSED`/no-PR branch unless `--allow-abandoned`
+2. refuses on uncommitted changes unless `--discard-dirty`
+3. removes the worktree
+4. deletes the local branch (`git branch -d`, auto-falling back to `-D` after a squash/rebase merge — **no re-prompting**, because the `MERGED` gate already proved the work landed)
+5. deletes the remote branch idempotently (a no-op when GitHub's auto-delete-on-merge already removed it — never an error)
+6. prunes and prints a summary
 
-If the project is **not** on the `<repo>/src` worktree layout (plain clone, work done on a branch in place), do the equivalent inline instead:
+So the whole of step 2 is normally just: relay the script's summary, and on a non-zero exit relay its message and let the user decide the next flag (`--allow-abandoned` for an abandoned branch, `--discard-dirty` for local junk). Don't hand-run the individual git commands.
+
+If the project is **not** on the `<repo>/src` worktree layout (plain clone, work done on a branch in place) and you're not delegating to `git-worktree`, do the equivalent inline instead:
 
 ```bash
 git checkout "$DEFAULT_BRANCH"
 git fetch origin --prune
 git pull --ff-only origin "$DEFAULT_BRANCH"
-git branch -d "$BRANCH"          # -d, not -D
+
+# Local branch: -d refuses after a squash/rebase merge; the MERGED gate above
+# makes -D safe here, so fall back instead of asking.
+git branch -d "$BRANCH" 2>/dev/null || git branch -D "$BRANCH"
+
+# Remote branch: only if it survived the merge (auto-delete may have removed it).
+git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1 \
+  && git push origin --delete "$BRANCH"
 ```
 
 ### 3. Update local main
@@ -93,7 +104,8 @@ Next: <e.g. "tf-base agent can now pick up #131 (logs tracer-bullet) — its blo
 ## Rules
 
 - **Never clean up an unmerged PR.** State must be `MERGED` (or an explicit user OK on a `CLOSED`-abandoned branch).
-- Use `git branch -d`, never `-D`, unless the user explicitly asks to force-delete.
+- Local branch delete: `git branch -d` first, fall back to `-D` only once the PR is confirmed `MERGED` (a squash/rebase merge makes `-d` refuse a branch whose work actually landed — don't keep re-prompting). Never `-D` an unmerged branch without explicit user OK.
+- Remote branch delete is idempotent and best-effort: skip it when `ls-remote` shows the branch is already gone (GitHub auto-delete-on-merge). A missing remote branch is success, not an error.
 - Never `git push --force` or touch `main` history.
 - Handoff docs go to the OS temp dir, never committed to the workspace.
 - Don't reimplement worktree cleanup or the handoff format — invoke the existing skills.
