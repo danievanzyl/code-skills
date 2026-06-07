@@ -8,6 +8,7 @@ description: >
   list worktrees, or asks about their worktree setup. Also trigger on: "set up repo", "clone for
   worktrees", "new worktree", "add branch", "remove worktree", "worktree list", "create_worktree",
   or any mention of the <repo>/src layout convention.
+allowed-tools: Bash(bash *), Bash(git *), Bash(gh *)
 ---
 
 # Git Worktree Manager
@@ -72,42 +73,47 @@ cd "$REPO_ROOT/$DIR_NAME"
 Remove a worktree after its PR has been merged. The user says "close worktree", "clean up branch X",
 "worktree done", etc.
 
-This operation is cautious — it checks the PR is actually merged before deleting anything.
+This operation is cautious and has sharp edges most hand-written attempts get wrong:
+a squash- or rebase-merge makes `git branch -d` refuse a branch whose PR actually
+landed, and GitHub's auto-delete-on-merge means the remote branch is usually already
+gone (so a naive `push --delete` errors). The bundled helper handles both — **prefer
+it over re-deriving the commands by hand:**
 
 ```bash
-SRC_DIR="<repo-name>/src"
-BRANCH="<branch>"
-DIR_NAME="${BRANCH//\//-}"
-WT_PATH="<repo-root>/$DIR_NAME"
-
-# Step 1: Check PR merge status
-gh pr view "$BRANCH" --repo <owner/repo> --json state --jq '.state'
-# Must return "MERGED". If not, warn the user and stop.
-
-# Step 2: Check for uncommitted changes in the worktree
-git -C "$WT_PATH" status --porcelain
-# If dirty, warn the user and ask for confirmation before proceeding.
-
-# Step 3: Remove the worktree
-git -C "$SRC_DIR" worktree remove --force "$WT_PATH"
-
-# Step 4: Delete the local branch
-git -C "$SRC_DIR" branch -d "$BRANCH"
-# Use -d (not -D) so git refuses if branch isn't fully merged.
-# If -d fails, tell the user and let them decide whether to force-delete.
-
-# Step 5: Prune stale refs
-git -C "$SRC_DIR" worktree prune
+# Resolve BRANCH + SRC_DIR first (see detection notes below), then:
+bash scripts/close-worktree.sh --branch "$BRANCH" --src "$SRC_DIR"
 ```
 
-**Steps:**
-1. Determine the branch — from args, or detect from cwd if inside a worktree
-2. Check PR status via `gh pr view`. If not merged, tell the user and stop
-3. Check for uncommitted changes. If dirty, warn and ask for confirmation
-4. Remove the worktree via `git worktree remove`
-5. Delete the local branch with `git branch -d`
-6. Prune stale worktree refs
-7. Confirm cleanup is complete
+`scripts/close-worktree.sh` (bundled alongside this SKILL.md) runs, in order:
+
+1. **Safety gate** — `gh pr view "$BRANCH"` must be `MERGED`. `OPEN` → refuses (exit 2).
+   `CLOSED` / no PR → refuses unless you pass `--allow-abandoned` (only with the user's
+   explicit OK — that force-deletes unmerged work).
+2. Removes the worktree (worktree layout) or switches `src` off the branch (plain clone).
+3. Deletes the **local** branch with `git branch -d`, falling back to `-D` only when it
+   refuses — a squash/rebase merge leaves the branch looking "unmerged" to git even though
+   the PR landed. The MERGED gate is what makes the force safe, so it does **not** re-prompt.
+4. Deletes the **remote** branch idempotently — a no-op (not an error) when auto-delete
+   already removed it.
+5. Prunes and prints a one-block summary to relay.
+
+Flags: `--allow-abandoned`, `--discard-dirty` (uncommitted changes — otherwise it refuses,
+exit 3), `--keep-remote`, `--repo`, `--default-branch`. See `bash scripts/close-worktree.sh
+--help`. Relay the summary; on a non-zero exit relay the message and let the user decide
+(e.g. confirm `--allow-abandoned` for an abandoned branch, `--discard-dirty` for local junk).
+
+**Manual equivalent** (only if the script can't be found — preserve the `-d`→`-D` fallback
+and the idempotent remote delete; the script is the source of truth):
+
+```bash
+gh pr view "$BRANCH" --repo <owner/repo> --json state --jq '.state'   # must be MERGED
+git -C "$SRC_DIR" worktree remove --force "$WT_PATH"
+git -C "$SRC_DIR" fetch origin --prune
+git -C "$SRC_DIR" branch -d "$BRANCH" 2>/dev/null || git -C "$SRC_DIR" branch -D "$BRANCH"
+git -C "$SRC_DIR" ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1 \
+  && git -C "$SRC_DIR" push origin --delete "$BRANCH"
+git -C "$SRC_DIR" worktree prune
+```
 
 **Detecting the branch from cwd**: If the user runs "close worktree" while inside one, detect it:
 ```bash
@@ -225,4 +231,5 @@ REPO_ROOT=$(dirname "$MAIN_WT")
 - Use `--ff-only` for pulls to avoid accidental merge commits in src
 - Confirm before destructive operations — worktrees may contain uncommitted work
 - Directory names convert `/` to `-` (e.g., `feature/auth` → `feature-auth/`)
-- Use `git branch -d` (not `-D`) when cleaning up — let git protect against data loss
+- Cleaning up after a **confirmed-merged** PR: try `git branch -d` first, fall back to `-D` when it refuses — a squash- or rebase-merge leaves the branch looking "unmerged" to git even though the work landed. Only force after the merge is confirmed; otherwise keep `-d` so git can still protect unmerged work
+- Remote-branch deletes are best-effort: check `ls-remote` first and treat "already gone" as success (GitHub's auto-delete-on-merge often beat you to it)
