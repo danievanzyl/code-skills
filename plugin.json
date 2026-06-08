@@ -5,20 +5,5 @@
   "author": {
     "name": "Danie van Zyl"
   },
-  "license": "MIT",
-  "skills": [
-    "./skills/vendor/mattpocock/caveman",
-    "./skills/vendor/mattpocock/diagnose",
-    "./skills/vendor/mattpocock/grill-me",
-    "./skills/vendor/mattpocock/grill-with-docs",
-    "./skills/vendor/mattpocock/handoff",
-    "./skills/vendor/mattpocock/improve-codebase-architecture",
-    "./skills/vendor/mattpocock/prototype",
-    "./skills/vendor/mattpocock/tdd",
-    "./skills/vendor/mattpocock/to-issues",
-    "./skills/vendor/mattpocock/to-prd",
-    "./skills/vendor/mattpocock/triage",
-    "./skills/vendor/mattpocock/write-a-skill",
-    "./skills/vendor/mattpocock/zoom-out"
-  ]
+  "license": "MIT"
 }

@@ -1,0 +1,23 @@
+{
+  "provider": "mattpocock",
+  "repo": "mattpocock/skills",
+  "ref": "main",
+  "sha": "2bf70051928429983de3b5718d277150926f8c89",
+  "upstreamCommitDate": "2026-06-08T15:02:04+01:00",
+  "skills": [
+    "caveman",
+    "diagnose",
+    "grill-me",
+    "grill-with-docs",
+    "handoff",
+    "improve-codebase-architecture",
+    "prototype",
+    "tdd",
+    "teach",
+    "to-issues",
+    "to-prd",
+    "triage",
+    "write-a-skill",
+    "zoom-out"
+  ]
+}
