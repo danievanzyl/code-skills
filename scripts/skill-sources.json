@@ -1,5 +1,5 @@
 {
-  "$comment": "Providers whose skills are vendored into skills/vendor/<name>/ by scripts/sync-skills.sh. Add a provider here to pull it in — no code changes needed. Each entry is mirrored: skills removed upstream or dropped from include_categories are pruned on the next sync.",
+  "$comment": "Providers whose skills are vendored into the plugin by scripts/sync-skills.sh. Skills land flat in skills/<name>/ (each with a .vendored-from marker so re-syncs prune safely); attribution lands in vendor/<name>/. Add a provider here — no code changes needed. Each provider is mirrored: skills removed upstream or dropped from include_categories are pruned on the next sync.",
   "providers": [
     {
       "name": "mattpocock",
@@ -7,8 +7,7 @@
       "ref": "main",
       "license": "MIT",
       "include_categories": ["engineering", "productivity"],
-      "exclude_skills": ["setup-matt-pocock-skills"],
-      "dest": "skills/vendor/mattpocock"
+      "exclude_skills": ["setup-matt-pocock-skills"]
     }
   ]
 }
