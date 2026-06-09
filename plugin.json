@@ -1,7 +1,7 @@
 {
   "name": "agentic-platform",
   "description": "Agentic coding platform: AFK runner, code reviewer, planning + research agents, hooks, and infra skills.",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "author": {
     "name": "Danie van Zyl"
   },
