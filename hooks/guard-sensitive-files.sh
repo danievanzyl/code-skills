@@ -44,6 +44,9 @@ DENY+='|\.netrc([^a-z0-9]|$)|\.git-credentials|\.npmrc([^a-z0-9]|$)|\.pypirc|\.p
 DENY+='|\.env'
 DENY+='|\.pem([^a-z0-9]|$)|\.(key|p12|pfx|keystore|jks)([^a-z0-9]|$)'
 DENY+='|id_(rsa|dsa|ecdsa|ed25519)|service[-_]account[^/]*\.json|\.tfstate'
+# Remote tf state: `terraform|tofu|terragrunt state pull|show` dumps full state
+# (secrets included) to stdout — the .tfstate file pattern above won't catch it.
+DENY+='|state[[:space:]]+(pull|show)'
 
 # --- allow-list exceptions (template/sample env files, public keys) ------------
 ALLOW='\.env\.(example|sample|template|dist|defaults?)|\.pub([^a-z0-9]|$)'
