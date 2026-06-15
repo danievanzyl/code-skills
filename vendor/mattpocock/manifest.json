@@ -2,8 +2,8 @@
   "provider": "mattpocock",
   "repo": "mattpocock/skills",
   "ref": "main",
-  "sha": "2bf70051928429983de3b5718d277150926f8c89",
-  "upstreamCommitDate": "2026-06-08T15:02:04+01:00",
+  "sha": "694fa30311e02c2639942308513555e61ee84a6f",
+  "upstreamCommitDate": "2026-06-10T16:01:44+01:00",
   "skills": [
     "caveman",
     "diagnose",
