@@ -24,6 +24,7 @@ if [[ -z "$issue" ]]; then
 fi
 
 # PR fallback ( || true so a missing PR doesn't trip set -e )
+# TODO(#13): the trailing `| head -1` SIGPIPEs sed under pipefail+set -e — drop it.
 if [[ -z "$issue" ]]; then
   issue=$( { (cd "$agent_dir" && gh pr view --json body,title -q '.title + " " + .body' 2>/dev/null) || true; } |
     sed -nE 's/.*#([0-9]+).*/\1/p' | head -1)
