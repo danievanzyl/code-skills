@@ -1,29 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$CLAUDE_PROJECT_DIR"
 
-branch=$(git rev-parse --abbrev-ref HEAD)
-worktree=$(git rev-parse --show-toplevel)
+# SubagentStop delivers the stopped subagent's context as JSON on stdin. The
+# runner does its work in its own (worktree-isolated) cwd; CLAUDE_PROJECT_DIR is
+# the PARENT session's checkout, which sits on a different branch. So read the
+# git state from the agent's worktree, but write the handoff file to the parent
+# project's durable .claude/state — that is where the reviewer looks for it, and
+# it survives the runner's worktree being removed before review.
+input=$(cat || true)
+agent_dir=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)
+agent_dir="${agent_dir:-${CLAUDE_PROJECT_DIR:-$PWD}}"
+project_dir="${CLAUDE_PROJECT_DIR:-$agent_dir}"
+
+branch=$(git -C "$agent_dir" rev-parse --abbrev-ref HEAD)
+worktree=$(git -C "$agent_dir" rev-parse --show-toplevel)
 
 # Branch name → issue number (e.g. feat/142-foo → 142)
 issue=$(echo "$branch" | sed -nE 's|.*/([0-9]+)-.*|\1|p')
 
 # Commit trailer fallback
 if [[ -z "$issue" ]]; then
-  issue=$(git log -1 --format=%B | sed -nE 's/^Refs: #([0-9]+).*/\1/p')
+  issue=$(git -C "$agent_dir" log -1 --format=%B | sed -nE 's/^Refs: #([0-9]+).*/\1/p')
 fi
 
-# PR fallback
+# PR fallback ( || true so a missing PR doesn't trip set -e )
 if [[ -z "$issue" ]]; then
-  issue=$(gh pr view --json body,title -q '.title + " " + .body' 2>/dev/null |
+  issue=$( { (cd "$agent_dir" && gh pr view --json body,title -q '.title + " " + .body' 2>/dev/null) || true; } |
     sed -nE 's/.*#([0-9]+).*/\1/p' | head -1)
 fi
 
-pr=$(gh pr list --head "$branch" --json number -q '.[0].number' 2>/dev/null || echo "")
-last_sha=$(git rev-parse HEAD)
+pr=$( (cd "$agent_dir" && gh pr list --head "$branch" --json number -q '.[0].number' 2>/dev/null) || echo "")
+last_sha=$(git -C "$agent_dir" rev-parse HEAD)
 
-mkdir -p .claude/state
-cat >".claude/state/issue-${issue}.json" <<EOF
+mkdir -p "$project_dir/.claude/state"
+cat >"$project_dir/.claude/state/issue-${issue}.json" <<EOF
 {
   "issue": "${issue}",
   "branch": "${branch}",
@@ -37,5 +47,5 @@ EOF
 
 # Also post the human-readable narrative to the PR if one exists
 if [[ -n "$pr" ]]; then
-  gh pr comment "$pr" --body "🤖 AFK runner completed work at \`${last_sha}\`. Reviewer state written to \`.claude/state/issue-${issue}.json\`."
+  (cd "$agent_dir" && gh pr comment "$pr" --body "🤖 AFK runner completed work at \`${last_sha}\`. Reviewer state written to \`.claude/state/issue-${issue}.json\`.")
 fi
