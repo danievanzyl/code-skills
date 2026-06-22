@@ -2,22 +2,26 @@
   "provider": "mattpocock",
   "repo": "mattpocock/skills",
   "ref": "main",
-  "sha": "694fa30311e02c2639942308513555e61ee84a6f",
-  "upstreamCommitDate": "2026-06-10T16:01:44+01:00",
+  "sha": "6eeb81b5fcfeeb5bd531dd47ab2f9f2bbea27461",
+  "upstreamCommitDate": "2026-06-18T09:41:33+01:00",
   "skills": [
-    "caveman",
-    "diagnose",
+    "ask-matt",
+    "codebase-design",
+    "diagnosing-bugs",
+    "domain-modeling",
     "grill-me",
     "grill-with-docs",
+    "grilling",
     "handoff",
+    "implement",
     "improve-codebase-architecture",
     "prototype",
+    "resolving-merge-conflicts",
     "tdd",
     "teach",
     "to-issues",
     "to-prd",
     "triage",
-    "write-a-skill",
-    "zoom-out"
+    "writing-great-skills"
   ]
 }
