@@ -39,11 +39,11 @@ chmod +x "$BIN/gh"
 export PATH="$BIN:$PATH"
 
 # --- parent project ($CLAUDE_PROJECT_DIR), sits on main ---
-PARENT="$TMP/parent"; mkdir -p "$PARENT"; cd "$PARENT"
+PARENT="$TMP/parent"; mkdir -p "$PARENT"; cd "$PARENT" || exit 1
 git init -q -b main && git commit -q --allow-empty -m "parent main"
 
 # --- agent worktree, on the HARNESS-NAMED branch agent-abc123 ---
-WT="$TMP/agent-worktree"; mkdir -p "$WT"; cd "$WT"
+WT="$TMP/agent-worktree"; mkdir -p "$WT"; cd "$WT" || exit 1
 git init -q -b agent-abc123
 echo hi > f.txt && git add f.txt && git commit -q -m "implement thing"
 
@@ -52,7 +52,11 @@ payload() { printf '{"cwd":"%s","agent_type":"agentic-platform:%s","hook_event_n
 echo "================ afk-handoff.sh (audit-only) ================"
 payload afk-task-runner | CLAUDE_PROJECT_DIR="$PARENT" bash "$HOOKS/afk-handoff.sh"
 rc=$?
-[[ $rc -eq 0 ]] && ok "afk-handoff exit 0 on harness-named branch agent-abc123" || bad "afk-handoff exit $rc"
+if [[ $rc -eq 0 ]]; then
+  ok "afk-handoff exit 0 on harness-named branch agent-abc123"
+else
+  bad "afk-handoff exit $rc"
+fi
 
 # writes NO state file — issue-N.json is dropped entirely (and the #51 in the PR
 # body must NOT resurrect it: the derivation that mined it is deleted).
@@ -71,7 +75,7 @@ fi
 
 echo "================ code-reviewer-push.sh ================"
 REMOTE="$TMP/remote.git"; git init -q --bare "$REMOTE"
-cd "$WT"; git remote add origin "$REMOTE"
+cd "$WT" || exit 1; git remote add origin "$REMOTE"
 
 # negative: no RALPH commit -> must no-op, no push
 payload code-reviewer | CLAUDE_PROJECT_DIR="$PARENT" bash "$HOOKS/code-reviewer-push.sh"
@@ -90,6 +94,40 @@ else
   bad "did NOT push after RALPH: commit"
 fi
 
+echo "================ afk-handoff.sh (no-PR path) ================"
+# Verify exit 0 when gh pr list returns empty (no PR open for the branch).
+NO_PR_BIN="$TMP/nopr-bin"; mkdir -p "$NO_PR_BIN"
+NO_PR_LOG="$TMP/nopr-gh.log"; : >"$NO_PR_LOG"
+cat >"$NO_PR_BIN/gh" <<NOSTUB
+#!/usr/bin/env bash
+echo "\$*" >>"$NO_PR_LOG"
+case "\$1 \$2" in
+  "pr list") echo "" ;; # no PR for this branch
+  *)         : ;;
+esac
+NOSTUB
+chmod +x "$NO_PR_BIN/gh"
+
+NO_PR_WT="$TMP/noPR-worktree"; mkdir -p "$NO_PR_WT"
+cd "$NO_PR_WT" || exit 1
+git init -q -b agent-def456
+echo hi2 > g.txt && git add g.txt && git commit -q -m "work without PR"
+
+no_pr_payload() { printf '{"cwd":"%s","agent_type":"agentic-platform:%s","hook_event_name":"SubagentStop"}' "$NO_PR_WT" "$1"; }
+
+no_pr_payload afk-task-runner | PATH="$NO_PR_BIN:$PATH" CLAUDE_PROJECT_DIR="$PARENT" bash "$HOOKS/afk-handoff.sh"
+nrc=$?
+if [[ $nrc -eq 0 ]]; then
+  ok "afk-handoff exit 0 when no PR exists (no-op comment path)"
+else
+  bad "afk-handoff exit $nrc when no PR exists — must not fail"
+fi
+if grep -q "pr comment" "$NO_PR_LOG"; then
+  bad "posted a comment despite no PR (gh calls: $(tr '\n' '|' <"$NO_PR_LOG"))"
+else
+  ok "no comment attempt when no PR exists (correct)"
+fi
+
 echo "========================================"
-[[ $fail -eq 0 ]] && echo "ALL GREEN" || echo "SOME FAILED"
+if [[ $fail -eq 0 ]]; then echo "ALL GREEN"; else echo "SOME FAILED"; fi
 exit $fail
