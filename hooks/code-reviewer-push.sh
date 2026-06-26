@@ -7,8 +7,6 @@ set -euo pipefail
 input=$(cat || true)
 agent_dir=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)
 agent_dir="${agent_dir:-${CLAUDE_PROJECT_DIR:-$PWD}}"
-# TODO(#13): non-isolated afk-issue reviewer reports the parent cwd, not the
-# runner's worktree it cd'd into — fall back to issue-N.json's worktree field.
 cd "$agent_dir"
 
 branch=$(git rev-parse --abbrev-ref HEAD)
