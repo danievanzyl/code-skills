@@ -1,6 +1,6 @@
 ---
 name: code-reviewer
-description: Reviews code changes on the current branch for clarity, edge cases, and bugs. Writes tests, fixes issues found, commits with "RALPH: Review -" prefix. Use proactively after the AFK runner completes a task, or when explicitly asked to review the current branch. The invoking message must include the branch name, issue number, and issue title.
+description: Reviews code changes on the current branch for clarity, edge cases, and bugs. Writes tests, fixes issues found, commits with "RALPH: Review -" prefix. Use proactively after the AFK runner completes a task, or when explicitly asked to review the current branch. The invoking message must include the PR number, branch name, issue number, and issue title.
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
 ---
@@ -13,16 +13,18 @@ Review the code changes on the current branch for the issue named in your invoca
 
 # CONTEXT
 
-## Locate the right branch and worktree
+## Check out the PR branch
 
-Given the issue number from your invocation, find the branch and worktree in this order:
+You run worktree-isolated, so check the PR out into your own worktree — do NOT
+look for a runner state file or `cd` into another agent's worktree. Using the PR
+number / branch from your invocation, in this order:
 
-1. Read `.claude/state/issue-<number>.json` if it exists — use `branch` and `worktree` fields verbatim
-2. Else: `gh pr list --search "#<number>" --json headRefName,number` and check out the head branch
-3. Else: `git branch -a | grep -E "/<number>-"` and use the first match
-4. Else: stop and report "cannot locate branch for issue #<number>"
+1. PR number given → `gh pr checkout <pr-number>` (the canonical path — the orchestrator passes it explicitly)
+2. Else, branch given → `gh pr checkout <branch>` (or `git fetch origin <branch> && git checkout <branch>`)
+3. Else: `gh pr list --search "#<number>" --json headRefName,number` → `gh pr checkout` the head
+4. Else: stop and report "cannot locate the PR/branch for issue #<number>"
 
-`cd` to the worktree path before running any git, gh, or npm commands.
+Run all subsequent git, gh, and feedback commands from this checkout.
 
 ## Gather review context
 
@@ -89,7 +91,7 @@ Avoid over-simplification that could:
 
 ## 5. Apply project standards
 
-Follow the established coding standards in the project at @CODING_STANDARDS.md.
+Apply the project's coding standards in `CODING_STANDARDS.md` if present; otherwise apply general language/framework best practices.
 
 ## 6. Preserve functionality
 

@@ -6,43 +6,50 @@ argument-hint: <issue-number> [base-branch]
 
 # afk-issue
 
-Single-issue sibling of `feature-branch-fan-in`: one targeted issue → `afk-task-runner` → `code-reviewer` → a reviewed PR. **Orchestration glue, not a reimplementation** — it chains agents/skills you already have and relies on the existing hooks. Do not re-grill the design or re-write the issue here (upstream: `grill-with-docs`, `to-issues`).
+Single-issue sibling of `feature-branch-fan-in`: one targeted issue → `afk-task-runner` → `code-reviewer` → a reviewed PR. **Orchestration glue, not a reimplementation** — it chains agents/skills you already have. Do not re-grill the design or re-write the issue here (upstream: `grill-with-docs`, `to-issues`).
 
 `$ARGUMENTS` = `<issue-number> [base-branch]`. Base defaults to `main`.
 
 ## Why a skill at all (vs just spawning the runner)
 
-`afk-task-runner` is written to **select the next queue task**, not to take a target. Left to its defaults it may pick a different issue and defaults its PR toward main. This skill (a) pins it to issue #N, (b) sets the PR base correctly, (c) sequences the reviewer against the runner's worktree, and (d) cleans up — leaning on the hooks rather than duplicating them.
+`afk-task-runner` is written to **select the next queue task**, not to take a target. Left to its defaults it may pick a different issue and defaults its PR toward main. This skill (a) pins it to issue #N, (b) sets the PR base correctly, (c) sequences an isolated reviewer against the PR, and (d) cleans up both worktrees.
 
-## What the hooks already do (don't re-implement)
+## Correctness rides on explicit data-flow, not hook state
 
-- On `afk-task-runner` stop → `afk-handoff.sh` writes `.claude/state/issue-N.json` (`branch`, `worktree`, `pr`, `last_sha`) and posts a PR comment.
-- `code-reviewer` reads that state file and `cd`s into the runner's **worktree** to review (it does NOT `gh pr checkout`).
-- On `code-reviewer` stop → `code-reviewer-push.sh` pushes the `RALPH: Review -` commits so the PR updates.
+A worktree-isolated subagent runs on a **harness-named branch** (`agent-<id>`), so nothing reliable can be reconstructed from git or a state file after the fact. Therefore:
+
+- The runner **returns** its PR number, head branch, worktree path, and test result. You (the orchestrator) hold these and pass them forward — verify with `gh`, never reconstruct from a state file.
+- The hooks are **audit-only / mechanical**, not a data channel: on runner stop `afk-handoff.sh` posts a completion comment to the PR (it writes **no** state file); on reviewer stop `code-reviewer-push.sh` pushes the reviewer's `RALPH:` commits from its own worktree.
 
 ## Parameters — resolve first, never hardcode
 
-| Param         | Source                                                       |
-| ------------- | ------------------------------------------------------------ |
-| issue number  | `$ARGUMENTS` (first token)                                   |
-| base branch   | `$ARGUMENTS` (second token); default `main`                  |
-| owner/repo    | `gh repo view --json nameWithOwner -q .nameWithOwner`        |
-| gh account    | memory or CLAUDE.md (account routing per org); ask if unknown |
-| child branch  | `<type>/<N>-<slug>` from the issue title (must match the branch-name hook: `feat\|fix\|chore\|refactor\|perf\|docs\|test`/`<N>`-…) |
+| Param             | Source                                                       |
+| ----------------- | ------------------------------------------------------------ |
+| issue number      | `$ARGUMENTS` (first token)                                   |
+| base branch       | `$ARGUMENTS` (second token); default `main`                  |
+| owner/repo        | `gh repo view --json nameWithOwner -q .nameWithOwner`        |
+| gh account        | memory or CLAUDE.md (account routing per org); ask if unknown |
+| PR# + head branch | the runner's **return value**, verified via `gh pr view` — NOT assumed from a branch-naming convention |
 
-## Preconditions
+## Preflight — fail fast, abort on a missing contract
 
-- [ ] Issue #N exists and its design is **locked** (a "design locked" comment, plus `CONTEXT.md` / relevant ADR on the base branch). If not locked → stop, point at `grill-with-docs`.
-- [ ] If base ≠ `main`, that branch is **pushed to origin** (a PR can't target a base that isn't on origin).
-- [ ] Correct gh account active for the org: `gh auth switch -u <account>`.
+Hard-check ALL of the following before spawning anything. If any fails, **stop and report** what's missing — do not proceed:
+
+- [ ] Issue #N **exists**: `gh issue view N --repo <owner>/<repo>`.
+- [ ] Design is **locked**: a "design locked" comment on the issue, plus `CONTEXT.md` / the relevant ADR on the base branch. If not locked → stop, point at `grill-with-docs`.
+- [ ] Base branch is **on origin** (a PR can't target a base that isn't pushed). `main` is a given; for any other base verify `git ls-remote --exit-code --heads origin <base>`.
+- [ ] Correct **gh account** active for the org: `gh auth switch -u <account>`.
+
+`CODING_STANDARDS.md` is **soft** — the reviewer applies it if present, else general standards. Its absence is not a preflight failure.
 
 ## Pipeline
 
-1. **Spawn `afk-task-runner`** (worktree isolation) with the targeted prompt below. It implements issue #N via TDD, runs the feedback loop, commits, and opens the PR. Its stop fires `afk-handoff.sh` → `issue-N.json`.
-2. **Verify the PR** points the right way: `gh pr view <n> --json baseRefName,headRefName` → base = `<base>`, head = `<child-branch>`.
-3. **Spawn `code-reviewer`** with issue #N + title (template below). It reads `issue-N.json`, `cd`s into the runner's worktree, reviews against locked intent + correctness, fixes, and commits `RALPH: Review -`. Its stop fires `code-reviewer-push.sh` → PR updates.
-4. **Report**: PR URL, reviewer verdict (APPROVE / CHANGES MADE / BLOCKED-needs-human), final test result.
-5. **Clean up the worktree** (AFTER review, not before — the reviewer reused it): `git worktree remove --force <worktree-from-issue-N.json>` then `git worktree prune`.
+1. **Spawn `afk-task-runner`** (worktree isolation) with the targeted prompt below. It implements issue #N via TDD, runs the feedback loop, commits, and opens the PR. Capture its **return value**: PR#, head branch, worktree path, test result.
+2. **Verify the PR** points the right way: `gh pr view <n> --json baseRefName,headRefName` → base = `<base>`, head = the returned branch. If the runner opened no PR, stop and report.
+3. **Free the runner's worktree** — BEFORE review, so the reviewer's `gh pr checkout` doesn't hit "branch already checked out": `git worktree remove --force <runner-worktree>` then `git worktree prune`. The branch is safe on origin (the PR is pushed).
+4. **Spawn `code-reviewer`** (worktree isolation) with the PR#/branch/issue (template below). It runs `gh pr checkout <n>` in its own worktree, reviews against locked intent + correctness, fixes, and commits `RALPH: Review -`. Its stop fires `code-reviewer-push.sh` → PR updates.
+5. **Clean up the reviewer's worktree** (AFTER review): `git worktree remove --force <reviewer-worktree>` then `git worktree prune`.
+6. **Report**: PR URL, reviewer verdict (APPROVE / CHANGES MADE / BLOCKED-needs-human), final test result.
 
 Default: **leave the PR open for a human merge** (the PR-to-main is the review gate). Merge only on explicit request: `gh pr merge <n> --squash --delete-branch`.
 
@@ -68,27 +75,30 @@ Default: **leave the PR open for a human merge** (the PR-to-main is the review g
 > if present, else infer: go → `go vet ./... && go test -race ./...`; node → the
 > project's test + typecheck; etc.).
 >
-> Branch + PR: your isolated worktree is branched from `<base>`. Work on child
-> branch `<child-branch>` (format `<type>/N-<slug>`). Open the PR with
-> **base = `<base>`** and head = `<child-branch>`. PR body: "<Closes|Addresses> #N"
-> (per the base). Do NOT close or modify the issue. Report the PR URL, your
-> worktree path, and the exact test result.
+> Branch + PR: your isolated worktree is branched from `<base>`. Open the PR with
+> **base = `<base>`** and head = your worktree's branch. PR body:
+> "<Closes|Addresses> #N" (per the base). Do NOT close or modify the issue.
+>
+> RETURN (the orchestrator depends on these — be exact): the PR number + URL, the
+> head branch name, your worktree path, and the exact test result.
 
 ## code-reviewer prompt template
 
-> Review the work for GitHub issue #N — "<title>" — in <owner>/<repo>.
-> `gh auth switch -u <account>` first. Locate the branch/worktree via
-> `.claude/state/issue-N.json` (the `branch` + `worktree` fields) and `cd` there —
-> do NOT `gh pr checkout`.
+> Review open PR #<n> in <owner>/<repo>. Branch: `<head-branch>`. Issue: #N —
+> "<title>". PR base: `<base>`.
+>
+> Setup: `gh auth switch -u <account>`, then `gh pr checkout <n> --repo <owner>/<repo>`
+> — you run worktree-isolated, so check the PR out into your OWN worktree; do NOT
+> look for a state file or another agent's worktree.
 >
 > Review against the LOCKED intent AND correctness: read the issue's "design
 > locked" comment, `CONTEXT.md` <entry>, and the ADR. <List the high-value,
 > design-specific checks most likely to be subtly wrong.>
 >
-> Fix issues + write missing tests. Commit to the branch with messages prefixed
-> `RALPH: Review - ` (the push hook ships them). Feedback loop must pass after
-> fixes. Return severity-tagged findings, commit SHAs, final test result, and a
-> verdict (APPROVE / CHANGES MADE / BLOCKED-needs-human).
+> Fix issues + write missing tests. Commit with messages prefixed `RALPH: Review - `
+> and push so the PR updates (the push hook also ships them). Feedback loop must
+> pass after fixes. Return severity-tagged findings, commit SHAs, final test
+> result, and a verdict (APPROVE / CHANGES MADE / BLOCKED-needs-human).
 
 ## When NOT to use this skill
 
