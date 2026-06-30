@@ -1,0 +1,5 @@
+{"type":"assistant","sessionId":"sess-clean","message":{"role":"assistant","usage":{"input_tokens":100,"output_tokens":20},"content":[{"type":"text","text":"I'll read the entry point first."},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"src/index.ts"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"export const x = 1"}]}}
+{"type":"assistant","sessionId":"sess-clean","message":{"role":"assistant","usage":{"input_tokens":50,"output_tokens":10},"content":[{"type":"tool_use","id":"t2","name":"Edit","input":{"file_path":"src/index.ts","old_string":"x = 1","new_string":"x = 2"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t3","name":"Bash","input":{"command":"npm test"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t4","name":"Bash","input":{"command":"curl -s https://api.github.com/repos/foo/bar"}}]}}

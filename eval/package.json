@@ -1,0 +1,20 @@
+{
+  "name": "run-evaluator",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Post-PR Run Evaluator — read-only analyzer that scores an agent's Run (trajectory + diff) against a versioned Rubric and posts a security-gated PR check.",
+  "scripts": {
+    "test": "bun test",
+    "eval": "bun run scripts/eval-pr.ts",
+    "capture": "bun run scripts/capture-run.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "tsx": "^4.21.0",
+    "typescript": "^5.0.0",
+    "yaml": "^2.0.0"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  }
+}
