@@ -44,5 +44,9 @@ jobs:
 
       - name: Hook regression tests
         run: |
+          # The harnesses create throwaway git repos and commit in them; CI
+          # runners have no ambient git identity, so set one.
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI"
           bash hooks/tests/test-afk-hooks.sh
           bash hooks/tests/test-eval-hooks.sh
