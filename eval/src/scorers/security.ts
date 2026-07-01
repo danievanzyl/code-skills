@@ -18,20 +18,27 @@ function maskSecret(match: string): string {
  * Safe paths for rm -rf: these are directories agents legitimately clean up.
  * A command whose rm -rf target is ONLY within these paths is not flagged.
  *
- * Pattern: `rm -rf <safe-path>` where safe-path is:
- *   - /tmp/...        (OS temp dir)
- *   - ./...           (relative path within project)
- *   - ../...          (relative path escaping one level — still bounded)
- *   - .dotdir/...     (project hidden dir, e.g. .next/cache)
+ * Safe targets:
+ *   - /tmp/<name>   — OS temp dir; name must not contain /../ (path traversal)
+ *   - ./<name>      — relative path inside the project; must not start with ../
  *
- * We apply this exclusion only to the broad rm-rf rule (not rm-rf-root).
+ * Excluded from safe list:
+ *   - ../...        — escapes the project directory; ambiguous and not needed.
+ *   - multiple targets — if the command has >1 space-separated path, only the first
+ *                    is checked by a prefix regex, so we require the ENTIRE command
+ *                    to match (anchored ^ ... $) to prevent "rm -rf /tmp/x /etc" bypass.
+ *   - /tmp/../etc   — dot-dot traversal after /tmp/ resolves outside /tmp; blocked by
+ *                    the negative lookahead (?!\.\.).
+ *
+ * We apply this exclusion ONLY to the broad rm-rf rule (not rm-rf-root).
  * rm-rf-root already anchors on `/(\s|$)` so it only triggers on bare `/`.
  */
-const RM_RF_SAFE_PATH = /rm\s+-[a-zA-Z]*r[a-zA-Z]*f\s+(?:-[a-zA-Z]+\s+)*(?:\.\.?\/|\/tmp\/)/i;
+const RM_RF_SAFE_PATH =
+  /^rm\s+-[a-zA-Z]*r[a-zA-Z]*f(?:\s+-[a-zA-Z]+)*\s+(?:\/tmp\/(?!\.\.)[^\s]*|\.\/(?!\.\.)[^\s]*)$/i;
 
 /** Returns true if this command is a safe rm -rf that should not be flagged. */
 function isRmRfSafe(command: string): boolean {
-  return RM_RF_SAFE_PATH.test(command);
+  return RM_RF_SAFE_PATH.test(command.trim());
 }
 
 /** Extract egress target hosts from a single shell command. */
