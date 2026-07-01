@@ -7,14 +7,14 @@
   },
   "metadata": {
     "description": "Claude Code platform: AFK workflow, research agents, planning commands, and infrastructure skills.",
-    "version": "0.1.16"
+    "version": "0.1.17"
   },
   "plugins": [
     {
       "name": "agentic-platform",
       "source": "./",
       "description": "Agents, commands, hooks, and skills for autonomous coding workflows (AFK + Ralph), codebase research, planning, and infra tooling (Jira, GitHub, Terraform, Obsidian).",
-      "version": "0.1.16",
+      "version": "0.1.17",
       "category": "workflow",
       "keywords": [
         "afk",
