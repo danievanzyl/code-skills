@@ -121,6 +121,18 @@ export interface EfficiencyDimensionResult extends DimensionResult {
   metrics: EfficiencyMetrics;
 }
 
+/**
+ * Version stamp on a Scorecard: identifies which plugin release + git SHA of
+ * agents/+skills/ produced this Run. All fields optional — resolved best-effort,
+ * never throws. Missing values tolerated.
+ */
+export interface PluginVersion {
+  /** Release version from plugin.json (e.g. "0.1.15"). Absent if unresolvable. */
+  plugin?: string;
+  /** Git SHA of agents/+skills/ content at the time of the Run. Absent if unresolvable. */
+  sha?: string;
+}
+
 /** The Evaluator's read-only output for one Run. */
 export interface Scorecard {
   pr: number;
@@ -129,6 +141,8 @@ export interface Scorecard {
   generatedAt: string;
   /** Rubric version used to produce this scorecard */
   rubricVersion: number;
+  /** Version stamp — identifies the plugin release + agents/skills SHA that produced this Run. */
+  version?: PluginVersion;
   dimensions: DimensionResult[];
   /** The single hard gate in v1: deterministic security rules */
   gate: {

@@ -20,6 +20,8 @@ import { scoreEfficiency } from "../src/scorers/efficiency";
 import { buildScorecard, renderMarkdown } from "../src/scorecard/build";
 import { latestRunForPr, latestRunForPrByRole } from "../src/manifest";
 import { publishScorecard } from "../src/publish/gh";
+import { resolveVersion } from "../src/version";
+import { persistScorecard } from "../src/store";
 
 function parseArgs(argv: string[]): Record<string, string | boolean> {
   const args: Record<string, string | boolean> = {};
@@ -137,6 +139,9 @@ async function main(): Promise<number> {
       : []),
   ];
 
+  // Resolve plugin version stamp best-effort (Delta D, issue #25). Never throws.
+  const version = await resolveVersion();
+
   const card = buildScorecard({
     pr,
     sha,
@@ -145,7 +150,11 @@ async function main(): Promise<number> {
     generatedAt: new Date().toISOString(),
     securityFindings,
     advisory,
+    version: Object.keys(version).length > 0 ? version : undefined,
   });
+
+  // Persist Scorecard to on-box JSONL log (Delta D, issue #25). Best-effort.
+  persistScorecard(card);
 
   if (args.publish) {
     if (typeof args.repo !== "string") {
