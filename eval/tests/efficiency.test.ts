@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import { parseTrajectory } from "../src/trajectory/parser";
 import { scoreEfficiency } from "../src/scorers/efficiency";
+import { buildScorecard, renderMarkdown } from "../src/scorecard/build";
 
 // --- Parser extraction tests ---
 
@@ -191,4 +192,131 @@ test("scoreEfficiency finds field is empty (no threshold-based findings in v1)",
   );
   const result = scoreEfficiency({ role: "runner", trajectory: traj });
   expect(result.findings).toHaveLength(0);
+});
+
+// --- Edge case tests ---
+
+test("single-message transcript: wallClockMs is 0 (same first and last timestamp)", () => {
+  // When only one timestamp exists, first === last, so duration is 0 (not undefined).
+  // A single timestamp IS present, so wall-clock is derivable — it just happens to be 0.
+  const traj = parseTrajectory(
+    JSON.stringify({
+      type: "assistant",
+      ts: "2026-01-01T10:00:00.000Z",
+      message: { usage: { input_tokens: 10, output_tokens: 2 }, content: [] },
+    }),
+  );
+  expect(traj.firstTimestamp).toBe("2026-01-01T10:00:00.000Z");
+  expect(traj.lastTimestamp).toBe("2026-01-01T10:00:00.000Z");
+  const result = scoreEfficiency({ role: "runner", trajectory: traj });
+  expect(result.metrics.wallClockMs).toBe(0);
+});
+
+test("reversed timestamps clamp to 0 (Math.max guard, not undefined)", () => {
+  // If lines arrive with a decreasing timestamp sequence, lastTimestamp < firstTimestamp.
+  // The scorer clamps to 0 rather than returning a negative duration.
+  const lines = [
+    JSON.stringify({ type: "assistant", ts: "2026-01-01T10:00:30.000Z", message: { content: [] } }),
+    JSON.stringify({ type: "assistant", ts: "2026-01-01T10:00:00.000Z", message: { content: [] } }),
+  ];
+  const traj = parseTrajectory(lines.join("\n"));
+  // Parser records first-seen as firstTimestamp, last-seen as lastTimestamp.
+  expect(traj.firstTimestamp).toBe("2026-01-01T10:00:30.000Z");
+  expect(traj.lastTimestamp).toBe("2026-01-01T10:00:00.000Z");
+  const result = scoreEfficiency({ role: "runner", trajectory: traj });
+  // Must be 0 (clamped), never negative.
+  expect(result.metrics.wallClockMs).toBe(0);
+  expect(result.metrics.wallClockMs).toBeGreaterThanOrEqual(0);
+});
+
+test("ts field takes priority over timestamp field on same line", () => {
+  // When a line carries both ts and timestamp, ts wins.
+  const line = JSON.stringify({
+    type: "assistant",
+    ts: "2026-01-01T12:00:00.000Z",
+    timestamp: "2026-01-01T09:00:00.000Z",
+    message: { content: [] },
+  });
+  const traj = parseTrajectory(line);
+  expect(traj.firstTimestamp).toBe("2026-01-01T12:00:00.000Z");
+});
+
+test("parser handles empty jsonl string without throwing", () => {
+  const traj = parseTrajectory("");
+  expect(traj.toolCalls).toHaveLength(0);
+  expect(traj.usage.cacheReadTokens).toBe(0);
+  expect(traj.firstTimestamp).toBeUndefined();
+  expect(traj.lastTimestamp).toBeUndefined();
+});
+
+test("parser handles malformed cache_read_input_tokens (NaN coerces to 0)", () => {
+  const jsonl = JSON.stringify({
+    type: "assistant",
+    message: {
+      usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: "bad" },
+      content: [],
+    },
+  });
+  const traj = parseTrajectory(jsonl);
+  // "bad" coerces to NaN; the || 0 guard must yield 0.
+  expect(traj.usage.cacheReadTokens).toBe(0);
+});
+
+test("metrics field is preserved verbatim after buildScorecard spread", () => {
+  // Regression guard: buildScorecard spreads advisory dims — verify metrics survive.
+  const traj = parseTrajectory(
+    JSON.stringify({
+      type: "assistant",
+      ts: "2026-01-01T10:00:00.000Z",
+      message: {
+        usage: { input_tokens: 42, output_tokens: 7, cache_read_input_tokens: 99 },
+        content: [{ type: "tool_use", id: "t1", name: "Bash", input: {} }],
+      },
+    }),
+  );
+  const effDim = scoreEfficiency({ role: "runner", trajectory: traj });
+  const card = buildScorecard({
+    pr: 1,
+    rubricVersion: 1,
+    generatedAt: "2026-07-01T00:00:00Z",
+    securityFindings: [],
+    advisory: [effDim],
+  });
+  const persisted = card.dimensions.find((d) => d.dimension === "efficiency") as typeof effDim;
+  expect(persisted).toBeDefined();
+  expect(persisted.metrics.inputTokens).toBe(42);
+  expect(persisted.metrics.outputTokens).toBe(7);
+  expect(persisted.metrics.cacheReadTokens).toBe(99);
+  expect(persisted.metrics.toolCallCount).toBe(1);
+  expect(persisted.gating).toBe(false);
+});
+
+test("efficiency rows do not appear as findings rows in markdown", () => {
+  // The findings loop must skip efficiency dims — they must not produce a findings section.
+  const traj = parseTrajectory(
+    JSON.stringify({
+      type: "assistant",
+      message: { usage: { input_tokens: 10, output_tokens: 5 }, content: [] },
+    }),
+  );
+  const effDim = scoreEfficiency({ role: "runner", trajectory: traj });
+  const card = buildScorecard({
+    pr: 1,
+    rubricVersion: 1,
+    generatedAt: "2026-07-01T00:00:00Z",
+    securityFindings: [],
+    advisory: [effDim],
+  });
+  const md = renderMarkdown(card);
+  // Efficiency must appear as the grouped table, NOT as a "### efficiency (advisory)" dim section
+  // with "_No findings._" — it should appear exactly once under the table heading.
+  const occurrences = (md.match(/efficiency \(advisory\)/g) ?? []).length;
+  expect(occurrences).toBe(1);
+  // The table header must be present.
+  expect(md).toContain("| role | input tokens |");
+  // No "No findings." for efficiency — it has no findings section.
+  const lines = md.split("\n");
+  const effIdx = lines.findIndex((l) => l.includes("efficiency (advisory)"));
+  // The line after the heading should be the comparative note, not "_No findings._"
+  expect(lines[effIdx + 1]).not.toBe("_No findings._");
 });
