@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Run Evaluator capture hook — the Trajectory↔PR linker (see docs/adr/0001).
 #
-# Wired to BOTH the top-level Stop event (headless afk.sh, where the Runner is
-# the top-level agent) and the afk-task-runner SubagentStop event (afk-issue,
-# where the Runner is a spawned sub-agent). On each Runner finish it links the
-# PR# to its transcript in the manifest by running eval/scripts/capture-run.ts.
+# Wired to the top-level Stop event (headless afk.sh), the afk-task-runner
+# SubagentStop event (afk-issue Runner), and the code-reviewer SubagentStop
+# event (Reviewer trajectory capture). On each finish it links the PR# to its
+# transcript in the manifest by running eval/scripts/capture-run.ts.
+#
+# Any CLI args are forwarded to capture-run.ts (e.g. --role reviewer).
 #
 # Audit-only: it must NEVER block the agent, so it always exits 0. capture-run.ts
 # is itself exit-0-on-error, which means a MISSING `bun` would silently no-op —
@@ -27,6 +29,6 @@ if ! command -v bun >/dev/null 2>&1; then
 fi
 
 printf '%s' "$input" \
-  | bun run "$plugin_root/eval/scripts/capture-run.ts" >>"$log" 2>&1 \
+  | bun run "$plugin_root/eval/scripts/capture-run.ts" "$@" >>"$log" 2>&1 \
   || printf '%s capture-run.ts exited nonzero\n' "$(ts)" >>"$log" 2>/dev/null || true
 exit 0

@@ -131,6 +131,20 @@ else
   bad "did not publish a Scorecard comment (gh calls: $(tr '\n' '|' <"$GH_LOG"))"
 fi
 
+echo "================ capture-run.sh --role reviewer (writes reviewer entry) ================"
+STATE5="$TMP/state5"
+payload_rev="{\"cwd\":\"$WT\",\"transcript_path\":\"$FIXTURE\",\"session_id\":\"sess-rev\",\"hook_event_name\":\"SubagentStop\"}"
+printf '%s' "$payload_rev" | \
+  PATH="$BIN:$PATH" RUN_EVAL_STATE_DIR="$STATE5" CLAUDE_PLUGIN_ROOT="$ROOT" bash "$HOOKS/capture-run.sh" --role reviewer
+rc=$?
+[[ $rc -eq 0 ]] && ok "capture-run --role reviewer exit 0" || bad "capture-run --role reviewer exit $rc"
+
+if [[ -f "$STATE5/manifest.jsonl" ]] && grep -q '"role":"reviewer"' "$STATE5/manifest.jsonl"; then
+  ok "manifest entry carries role=reviewer"
+else
+  bad "manifest entry missing role=reviewer ($(cat "$STATE5/manifest.jsonl" 2>/dev/null))"
+fi
+
 echo "========================================"
 if [[ $fail -eq 0 ]]; then echo "ALL GREEN"; else echo "SOME FAILED"; fi
 exit $fail
