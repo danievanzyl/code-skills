@@ -7,10 +7,13 @@
  * is a spawned sub-agent). On each Runner finish it derives the PR from the
  * worktree and appends an entry to the manifest.
  *
+ * Pass --role runner|reviewer (default: runner). The reviewer path wires this via
+ * the code-reviewer SubagentStop with --role reviewer, before the Evaluator runs.
+ *
  * It is a linker, never a collector: it records WHERE the transcript is, it does
  * not parse or copy it. It must never block the agent — it always exits 0.
  */
-import { appendRun, type RunEntry } from "../src/manifest";
+import { appendRun, type RunEntry, type AgentRole } from "../src/manifest";
 
 interface HookPayload {
   transcript_path?: string;
@@ -38,7 +41,18 @@ async function ghPrInfo(cwd: string): Promise<{ pr: number; sha?: string } | nul
   }
 }
 
+function parseRole(argv: string[]): AgentRole {
+  const idx = argv.indexOf("--role");
+  if (idx !== -1 && argv[idx + 1]) {
+    const v = argv[idx + 1];
+    if (v === "reviewer") return "reviewer";
+  }
+  return "runner";
+}
+
 async function main(): Promise<void> {
+  const role = parseRole(process.argv.slice(2));
+
   const stdin = await Bun.stdin.text();
   let payload: HookPayload = {};
   try {
@@ -67,11 +81,12 @@ async function main(): Promise<void> {
     sha: info.sha,
     runId: payload.session_id,
     event: payload.hook_event_name,
+    role,
     ts: new Date().toISOString(),
   };
   appendRun(entry);
   process.stderr.write(
-    `run-eval/capture: linked PR #${info.pr} → ${transcriptPath}\n`,
+    `run-eval/capture: linked PR #${info.pr} → ${transcriptPath} (role=${role})\n`,
   );
 }
 

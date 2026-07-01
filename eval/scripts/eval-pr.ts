@@ -17,7 +17,7 @@ import { loadRubric } from "../src/rubric/loader";
 import { parseTrajectoryFile } from "../src/trajectory/parser";
 import { scoreSecurity } from "../src/scorers/security";
 import { buildScorecard, renderMarkdown } from "../src/scorecard/build";
-import { latestRunForPr } from "../src/manifest";
+import { latestRunForPr, latestRunForPrByRole } from "../src/manifest";
 import { publishScorecard } from "../src/publish/gh";
 
 function parseArgs(argv: string[]): Record<string, string | boolean> {
@@ -64,19 +64,22 @@ async function main(): Promise<number> {
 
   const rubric = loadRubric(typeof args.rubric === "string" ? args.rubric : undefined);
 
-  // Resolve the Trajectory: explicit --transcript wins, else the manifest.
+  // Resolve the Runner Trajectory: explicit --transcript wins, else manifest (by role).
   let transcriptPath: string | undefined;
   let sha: string | undefined = typeof args.sha === "string" ? args.sha : undefined;
   let runId: string | undefined =
     typeof args["run-id"] === "string" ? (args["run-id"] as string) : undefined;
+  const manifestPath = typeof args.manifest === "string" ? args.manifest : undefined;
 
   if (typeof args.transcript === "string") {
     transcriptPath = args.transcript;
   } else {
-    const entry = latestRunForPr(
-      pr,
-      typeof args.manifest === "string" ? args.manifest : undefined,
-    );
+    // Prefer role-filtered lookup (absent role treated as runner for back-compat).
+    // Fall back to unfiltered latestRunForPr only as defense-in-depth: if future
+    // changes alter the absent-role assumption, this avoids a hard error.
+    const entry =
+      latestRunForPrByRole(pr, "runner", manifestPath) ??
+      latestRunForPr(pr, manifestPath);
     if (!entry) {
       process.stderr.write(
         `error: no manifest entry for PR #${pr}. Pass --transcript or check the capture hook.\n`,
@@ -90,6 +93,23 @@ async function main(): Promise<number> {
 
   const trajectory = parseTrajectoryFile(transcriptPath);
 
+  // Resolve the Reviewer Trajectory independently (optional — may not exist yet).
+  let reviewerTranscriptPath: string | undefined;
+  if (typeof args["reviewer-transcript"] === "string") {
+    reviewerTranscriptPath = args["reviewer-transcript"];
+  } else {
+    const reviewerEntry = latestRunForPrByRole(pr, "reviewer", manifestPath);
+    reviewerTranscriptPath = reviewerEntry?.transcriptPath;
+  }
+  const reviewerTrajectory = reviewerTranscriptPath
+    ? parseTrajectoryFile(reviewerTranscriptPath)
+    : undefined;
+  if (reviewerTranscriptPath) {
+    process.stderr.write(
+      `run-eval: resolved reviewer trajectory from ${reviewerTranscriptPath}\n`,
+    );
+  }
+
   // Resolve the diff: explicit --diff file, else gh pr diff when a repo is known.
   let diff: string | undefined;
   if (typeof args.diff === "string") {
@@ -98,7 +118,15 @@ async function main(): Promise<number> {
     diff = await ghPrDiff(pr, args.repo);
   }
 
+  // Score runner trajectory (the primary gate input).
   const securityFindings = scoreSecurity({ trajectory, diff }, rubric);
+
+  // Score reviewer trajectory independently (advisory — findings attributed separately).
+  // In v1 we merge them into one security dimension; per-role attribution is #24.
+  if (reviewerTrajectory) {
+    const reviewerFindings = scoreSecurity({ trajectory: reviewerTrajectory }, rubric);
+    securityFindings.push(...reviewerFindings);
+  }
 
   const card = buildScorecard({
     pr,

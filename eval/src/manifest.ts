@@ -3,6 +3,9 @@ import { dirname } from "node:path";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+/** Which agent wrote this entry. Absent role is back-compat treated as "runner". */
+export type AgentRole = "runner" | "reviewer";
+
 /** One captured Run, linking a PR to its transcript. Written by the capture hook. */
 export interface RunEntry {
   pr: number;
@@ -11,6 +14,11 @@ export interface RunEntry {
   runId?: string;
   /** Which hook event recorded it: "Stop" (headless) or "SubagentStop". */
   event?: string;
+  /**
+   * Agent role that produced this Trajectory.
+   * Absent = "runner" for back-compat (legacy capture hook entries).
+   */
+  role?: AgentRole;
   /** ISO timestamp the entry was written. */
   ts: string;
 }
@@ -51,4 +59,18 @@ export function latestRunForPr(
 ): RunEntry | null {
   const all = runsForPr(pr, path);
   return all.length ? all[all.length - 1] : null;
+}
+
+/**
+ * Latest entry for a PR filtered by agent role (last write wins per role).
+ * Back-compat: an entry with absent role is treated as "runner".
+ */
+export function latestRunForPrByRole(
+  pr: number,
+  role: AgentRole,
+  path: string = defaultManifestPath(),
+): RunEntry | null {
+  const all = runsForPr(pr, path);
+  const filtered = all.filter((e) => (e.role ?? "runner") === role);
+  return filtered.length ? filtered[filtered.length - 1] : null;
 }
