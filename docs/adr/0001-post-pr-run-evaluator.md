@@ -35,3 +35,16 @@ It scores against a single versioned **Rubric** of global rules — **no per-iss
 - **Runtime dependency: `bun`.** Capture + eval both need `bun` on the box. The `afk-issue` path runs on the host (bun present). The headless `afk.sh` path runs inside `docker sandbox run claude` — bun there is **unverified**; the capture wrapper logs a health line when bun is missing so the silent no-op is visible. The headless path also has no Reviewer stage, so it has no automatic Evaluator trigger yet (manual `eval-pr.ts` until it grows one).
 - **Future split (deferred).** The analyzer is expected to graduate into a `pe-ai-skills-hooks` plugin (sibling to skill-vetter, reusing its Anthropic SDK + structured-output harness for the LLM judge), with the capture hooks staying here. Track that cross-repo split with a CONTEXT-MAP when it lands. Domain glossary: `CONTEXT.md`.
 - Open items deferred: LLM-as-judge module (process/outcome quality — the `advisory` slot in `buildScorecard` is already shaped for it); judge model + per-Run cost ceiling; calibration plan; step/cost budget thresholds (need baseline data); exact final Scorecard schema.
+
+## Update — dual-agent + efficiency + version stamp (2026-07-01)
+
+A fresh `/grill-with-docs` session (against the Obsidian `agent-observability-and-evals` research; design of record on branch `design/run-evaluator`, PR #21) re-derived this design and **accepted four deltas** that extend — do not overturn — the decision above. They stay deterministic-first (the LLM judge remains a separate later phase). Scoped as issues #22–#26:
+
+- **B — Role-tagged both-agent capture** (#22). Capture the **Reviewer** Trajectory too, not just the Runner's. Manifest entries carry a `role` (`runner`|`reviewer`); capture is also wired on the `code-reviewer` `SubagentStop` (before the Evaluator trigger); the Evaluator resolves the Runner and Reviewer Trajectories independently. Foundational.
+- **A — Efficiency dimension** (#23). Deterministic extraction of tokens (in/out + cache reads), tool-call count, and wall-clock per Trajectory. **Advisory, never gates, no thresholds** — compared per-issue over time; the signal for whether an agent-prompt change helped or hurt.
+- **C — Reviewer rubric + rubber-stamp detection** (#24). A **separate Reviewer rubric**; deterministic rubber-stamp = missing inspection evidence (no read-tool call and/or no test run). **Commit count is deliberately not a signal** (nothing-to-fix is valid). Advisory WARN.
+- **D — Version stamp + Scorecard persistence** (#25). Stamp every Scorecard with the plugin version **and** git SHA of `agents/`+`skills/`, and persist Scorecards to an on-box JSONL — the enabler for comparing behaviour across prompt changes (goal C). Cheap now, impossible retroactively.
+
+Plus **re-author the deterministic Security ruleset** fresh rather than inherit the prototype set (#26); Security stays the sole hard gate.
+
+Findings are attributed per role (and per skill/tool where identifiable). The one data-residency exception (a secret-redacted Trajectory sent to the swappable Claude judge) applies only to the later judge phase, not to these deterministic deltas.
