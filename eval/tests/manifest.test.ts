@@ -83,8 +83,16 @@ test("latestRunForPrByRole — last write wins per role", () => {
   expect(latestRunForPrByRole(40, "reviewer", path)!.transcriptPath).toBe("/t/rev.jsonl");
 });
 
-test("latestRunForPrByRole returns null when role absent", () => {
+test("latestRunForPrByRole returns null when no entry exists for that role", () => {
   const path = tmpManifest();
   appendRun(mk(50, "/t/runner.jsonl", "r1", "runner"), path);
   expect(latestRunForPrByRole(50, "reviewer", path)).toBeNull();
+});
+
+test("latestRunForPrByRole — legacy entries (no role field) do not match reviewer query", () => {
+  const path = tmpManifest();
+  // Write entry without a role field (simulates pre-#22 capture hook output).
+  // Absent role = runner; reviewer query must return null, not the legacy entry.
+  appendRun(mk(60, "/t/legacy.jsonl", "leg"), path);
+  expect(latestRunForPrByRole(60, "reviewer", path)).toBeNull();
 });

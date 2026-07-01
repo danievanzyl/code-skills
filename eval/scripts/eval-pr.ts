@@ -74,8 +74,9 @@ async function main(): Promise<number> {
   if (typeof args.transcript === "string") {
     transcriptPath = args.transcript;
   } else {
-    // Prefer role-filtered lookup; fall back to unfiltered for back-compat with
-    // legacy manifests that have no role field.
+    // Prefer role-filtered lookup (absent role treated as runner for back-compat).
+    // Fall back to unfiltered latestRunForPr only as defense-in-depth: if future
+    // changes alter the absent-role assumption, this avoids a hard error.
     const entry =
       latestRunForPrByRole(pr, "runner", manifestPath) ??
       latestRunForPr(pr, manifestPath);
