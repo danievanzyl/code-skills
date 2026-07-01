@@ -66,6 +66,30 @@ security:
       - localhost
       - 127.0.0.1
 
+
+# Reviewer rubric — separate from Runner rules (see ADR-0001 Delta C, issue #24).
+# Versioned alongside the global rubric.
+reviewer:
+  version: 1
+  inspection:
+    # Tool names considered read tools — evidence the Reviewer actually inspected code.
+    # Genuinely reviewed = used a read tool AND ran tests. Both signals required.
+    read_tools:
+      - Read
+      - Grep
+      - Glob
+    # Bash command patterns that count as running tests.
+    # A Reviewer Bash call matching ANY of these is evidence of a test run.
+    test_patterns:
+      - '\bbun\s+test\b'
+      - '\bnpm\s+(run\s+)?test\b'
+      - '\byarn\s+test\b'
+      - '\bpnpm\s+test\b'
+      - '\bpytest\b'
+      - '\bgo\s+test\b'
+      - '\bcargo\s+test\b'
+      - '\bmake\s+test\b'
+
 # Advisory dimensions — surfaced in the Scorecard comment, never block in v1.
 # (Scorers not implemented in the first slice; thresholds are placeholders
 #  pending baseline data — see ADR-0001 open items.)
