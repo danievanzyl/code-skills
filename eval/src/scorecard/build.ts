@@ -1,5 +1,6 @@
 import type {
   DimensionResult,
+  EfficiencyDimensionResult,
   Finding,
   Scorecard,
   Verdict,
@@ -69,6 +70,36 @@ export function buildScorecard(input: BuildInput): Scorecard {
   };
 }
 
+/** Narrow a DimensionResult to EfficiencyDimensionResult, or undefined. */
+function asEfficiency(dim: DimensionResult): EfficiencyDimensionResult | undefined {
+  if (dim.dimension === "efficiency" && "metrics" in dim) {
+    return dim as EfficiencyDimensionResult;
+  }
+  return undefined;
+}
+
+/** Format a token count with commas for readability. */
+function fmtTokens(n: number): string {
+  return n.toLocaleString("en-US");
+}
+
+/** Format wall-clock ms as a human-readable string. */
+function fmtMs(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
+}
+
+/** Render per-role efficiency metrics as a compact markdown table row. */
+function renderEfficiencyRow(dim: EfficiencyDimensionResult): string {
+  const { role, metrics } = dim;
+  const wall = metrics.wallClockMs !== undefined ? fmtMs(metrics.wallClockMs) : "—";
+  return (
+    `| ${role} | ${fmtTokens(metrics.inputTokens)} | ${fmtTokens(metrics.outputTokens)}` +
+    ` | ${fmtTokens(metrics.cacheReadTokens)} | ${metrics.toolCallCount} | ${wall} |`
+  );
+}
+
 /** Render a Scorecard as a Markdown PR comment. */
 export function renderMarkdown(card: Scorecard): string {
   const icon: Record<Verdict, string> = {
@@ -85,7 +116,15 @@ export function renderMarkdown(card: Scorecard): string {
   if (card.sha) lines.push(`<sub>commit \`${card.sha.slice(0, 12)}\`${card.runId ? ` · run \`${card.runId}\`` : ""}</sub>`);
   lines.push("");
 
+  // Collect efficiency dimensions for grouped rendering.
+  const efficiencyDims = card.dimensions
+    .map(asEfficiency)
+    .filter((d): d is EfficiencyDimensionResult => d !== undefined);
+
   for (const dim of card.dimensions) {
+    const effDim = asEfficiency(dim);
+    if (effDim) continue; // rendered separately below
+
     const tag = dim.gating ? "gating" : "advisory";
     lines.push(`### ${icon[dim.verdict]} ${dim.dimension} (${tag})`);
     if (dim.findings.length === 0) {
@@ -99,6 +138,24 @@ export function renderMarkdown(card: Scorecard): string {
     }
     lines.push("");
   }
+
+  // Render per-role efficiency as a grouped table (advisory, never gates).
+  if (efficiencyDims.length > 0) {
+    lines.push(`### ${icon["PASS"]} efficiency (advisory)`);
+    lines.push(
+      "_Comparative only — not an absolute score. Compare per-issue over time._",
+    );
+    lines.push("");
+    lines.push(
+      "| role | input tokens | output tokens | cache reads | tool calls | wall-clock |",
+    );
+    lines.push("| --- | --- | --- | --- | --- | --- |");
+    for (const d of efficiencyDims) {
+      lines.push(renderEfficiencyRow(d));
+    }
+    lines.push("");
+  }
+
   lines.push(
     `<sub>Read-only evaluator · does not modify the diff · generated ${card.generatedAt}</sub>`,
   );

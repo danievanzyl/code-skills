@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import { loadRubric } from "../src/rubric/loader";
 import { parseTrajectoryFile } from "../src/trajectory/parser";
 import { scoreSecurity } from "../src/scorers/security";
+import { scoreEfficiency } from "../src/scorers/efficiency";
 import { buildScorecard, renderMarkdown } from "../src/scorecard/build";
 import { latestRunForPr, latestRunForPrByRole } from "../src/manifest";
 import { publishScorecard } from "../src/publish/gh";
@@ -128,6 +129,14 @@ async function main(): Promise<number> {
     securityFindings.push(...reviewerFindings);
   }
 
+  // Efficiency dimension: advisory, never gates. Per-role (ADR-0001 Delta A, issue #23).
+  const advisory = [
+    scoreEfficiency({ role: "runner", trajectory }),
+    ...(reviewerTrajectory
+      ? [scoreEfficiency({ role: "reviewer", trajectory: reviewerTrajectory })]
+      : []),
+  ];
+
   const card = buildScorecard({
     pr,
     sha,
@@ -135,6 +144,7 @@ async function main(): Promise<number> {
     rubricVersion: rubric.version,
     generatedAt: new Date().toISOString(),
     securityFindings,
+    advisory,
   });
 
   if (args.publish) {
