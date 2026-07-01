@@ -16,3 +16,8 @@ statusline.ts
 ide/
 plans/
 plugins/
+
+# Run Evaluator (eval/) — Bun deps/build; local run state (manifests, never transcripts)
+eval/node_modules/
+eval/dist/
+.run-eval/

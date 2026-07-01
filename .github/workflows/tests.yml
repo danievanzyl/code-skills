@@ -1,0 +1,52 @@
+name: tests
+
+# Tests for the Run Evaluator (eval/) and the shell hooks (hooks/).
+# Runs on PRs and on pushes to main that touch those paths. Pure test job — it
+# never pushes; release.yml owns versioning on push to main.
+
+on:
+  pull_request:
+    paths:
+      - "eval/**"
+      - "hooks/**"
+      - ".github/workflows/tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "eval/**"
+      - "hooks/**"
+      - ".github/workflows/tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"   # match eval/bun.lock for --frozen-lockfile
+
+      - name: Install eval deps
+        working-directory: eval
+        run: bun install --frozen-lockfile
+
+      - name: Unit tests (eval)
+        working-directory: eval
+        run: bun test
+
+      - name: Typecheck (eval)
+        working-directory: eval
+        run: bun run typecheck
+
+      - name: Hook regression tests
+        run: |
+          # The harnesses create throwaway git repos and commit in them; CI
+          # runners have no ambient git identity, so set one.
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI"
+          bash hooks/tests/test-afk-hooks.sh
+          bash hooks/tests/test-eval-hooks.sh

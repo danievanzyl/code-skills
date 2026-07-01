@@ -22,8 +22,10 @@ npx skills@latest add danievanzyl/code-skills
 | `plugin.json` | Plugin manifest (this repo is the `agentic-platform` plugin) |
 | `.claude-plugin/` | `marketplace.json` — the single-marketplace definition everything installs from |
 | `hooks/` | Hook configurations |
+| `eval/` | **Run Evaluator** — read-only post-PR analyzer; scores a Run (Trajectory + diff) against a versioned Rubric, posts a security-gated check (see `eval/README.md` + `docs/adr/0001`) |
+| `docs/adr/` | Architecture decision records |
 | `scripts/` | Maintenance tooling (`sync-skills.sh`, `skill-sources.json`) |
-| `.github/workflows/` | CI — `release.yml` (version bump on merge to main) + `sync-skills.yml` (weekly upstream-skill sync PR) |
+| `.github/workflows/` | CI — `release.yml` (version bump on merge to main) + `sync-skills.yml` (weekly upstream-skill sync PR) + `tests.yml` (eval/ unit tests + hook regression tests) |
 | `vendor/` | Attribution + provenance for vendored skills (generated) |
 | `ralph/` | RALPH — autonomous AFK loop runner; drives Claude Code over an `issues/` queue until `<promise>NO MORE TASKS</promise>` (`afk.sh` loop / `once.sh` single pass + per-stack prompts) |
 | `tmux-workflow/` | tmux + Ghostty session/worktree scripts (`sessionizer`, `new-branch`, `close-branch` with a PR-merged cleanup gate) |
