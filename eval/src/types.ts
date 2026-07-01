@@ -24,7 +24,8 @@ export type Dimension =
   | "budget"
   | "scope"
   | "process"
-  | "outcome";
+  | "outcome"
+  | "efficiency";
 
 /** A single finding produced by a scorer. */
 export interface Finding {
@@ -70,13 +71,33 @@ export interface Trajectory {
   toolCalls: ToolCall[];
   /** Assistant reasoning/text blocks, in order */
   assistantText: string[];
-  /** Token usage totals if the transcript carried them (for budget, later) */
-  usage: { inputTokens: number; outputTokens: number };
+  /**
+   * Token usage totals if the transcript carried them.
+   * cacheReadTokens: sum of cache_read_input_tokens across all turns (0 if absent).
+   */
+  usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number };
+  /** ISO timestamp of the first parsed transcript line that carries a ts/timestamp field. */
+  firstTimestamp?: string;
+  /** ISO timestamp of the last parsed transcript line that carries a ts/timestamp field. */
+  lastTimestamp?: string;
   /** Number of transcript lines parsed */
   lineCount: number;
 }
 
 export type Verdict = "PASS" | "WARN" | "FAIL";
+
+/**
+ * Raw efficiency metrics for one agent's Trajectory.
+ * Carried on EfficiencyDimensionResult so a later slice can persist them.
+ * wallClockMs is undefined when the transcript has no timestamps.
+ */
+export interface EfficiencyMetrics {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  toolCallCount: number;
+  wallClockMs?: number;
+}
 
 /** Result for one scored dimension. */
 export interface DimensionResult {
@@ -85,6 +106,19 @@ export interface DimensionResult {
   /** Whether this dimension can block a merge in the current policy */
   gating: boolean;
   findings: Finding[];
+}
+
+/**
+ * Efficiency dimension result (advisory only, never gates).
+ * Extends DimensionResult with per-role raw metrics for downstream persistence.
+ */
+export interface EfficiencyDimensionResult extends DimensionResult {
+  dimension: "efficiency";
+  advisory: true;
+  /** The agent role whose Trajectory produced these metrics. */
+  role: "runner" | "reviewer";
+  /** Raw metrics — carry these for the persistence slice (#25). */
+  metrics: EfficiencyMetrics;
 }
 
 /** The Evaluator's read-only output for one Run. */

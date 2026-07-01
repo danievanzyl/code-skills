@@ -15,7 +15,10 @@ export function parseTrajectory(jsonl: string): Trajectory {
   const assistantText: string[] = [];
   let inputTokens = 0;
   let outputTokens = 0;
+  let cacheReadTokens = 0;
   let sessionId: string | undefined;
+  let firstTimestamp: string | undefined;
+  let lastTimestamp: string | undefined;
   let lineCount = 0;
 
   for (const line of jsonl.split("\n")) {
@@ -32,6 +35,18 @@ export function parseTrajectory(jsonl: string): Trajectory {
 
     sessionId ??= obj.sessionId ?? obj.session_id;
 
+    // Extract wall-clock timestamps: ts takes priority over timestamp.
+    const ts: string | undefined =
+      typeof obj.ts === "string"
+        ? obj.ts
+        : typeof obj.timestamp === "string"
+          ? obj.timestamp
+          : undefined;
+    if (ts) {
+      firstTimestamp ??= ts;
+      lastTimestamp = ts;
+    }
+
     const message = obj.message ?? obj;
     const content = message?.content;
     if (!Array.isArray(content)) continue;
@@ -40,6 +55,7 @@ export function parseTrajectory(jsonl: string): Trajectory {
     if (usage) {
       inputTokens += Number(usage.input_tokens ?? 0) || 0;
       outputTokens += Number(usage.output_tokens ?? 0) || 0;
+      cacheReadTokens += Number(usage.cache_read_input_tokens ?? 0) || 0;
     }
 
     for (const block of content) {
@@ -62,7 +78,9 @@ export function parseTrajectory(jsonl: string): Trajectory {
     sessionId,
     toolCalls,
     assistantText,
-    usage: { inputTokens, outputTokens },
+    usage: { inputTokens, outputTokens, cacheReadTokens },
+    firstTimestamp,
+    lastTimestamp,
     lineCount,
   };
 }
