@@ -2,6 +2,7 @@ import type {
   DimensionResult,
   EfficiencyDimensionResult,
   Finding,
+  PluginVersion,
   Scorecard,
   Verdict,
 } from "../types";
@@ -28,6 +29,11 @@ export interface BuildInput {
    * first slice; accepted here so they can be wired in without reshaping.
    */
   advisory?: DimensionResult[];
+  /**
+   * Version stamp — plugin release + agents/skills SHA. Resolved best-effort
+   * by the caller; absent fields tolerated. Delta D (#25).
+   */
+  version?: PluginVersion;
 }
 
 /**
@@ -60,6 +66,7 @@ export function buildScorecard(input: BuildInput): Scorecard {
     runId: input.runId,
     generatedAt: input.generatedAt,
     rubricVersion: input.rubricVersion,
+    ...(input.version !== undefined ? { version: input.version } : {}),
     dimensions,
     gate: {
       check: SECURITY_CHECK,
