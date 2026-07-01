@@ -2,7 +2,7 @@
  * Tests for Delta D: version stamp + on-box Scorecard persistence (issue #25).
  */
 import { test, expect } from "bun:test";
-import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveVersion } from "../src/version";
@@ -206,6 +206,41 @@ test("scorecardsForSha returns [] when no match", () => {
   const log = tmpLog();
   persistScorecard(makeCard(70, { sha: "abc123" }), log);
   expect(scorecardsForSha("zzz", log)).toEqual([]);
+});
+
+test("scorecardsForSha — entries without sha field not returned", () => {
+  const log = tmpLog();
+  persistScorecard(makeCard(71), log); // no version
+  persistScorecard(makeCard(72, { plugin: "0.1.0" }), log); // version but no sha
+  expect(scorecardsForSha("a", log)).toEqual([]);
+});
+
+// ---------------------------------------------------------------------------
+// readAll robustness — malformed JSONL lines
+// ---------------------------------------------------------------------------
+
+test("readAll skips malformed lines — valid entries still returned", () => {
+  const log = tmpLog();
+  // Write a valid entry, then inject a malformed line, then another valid entry.
+  const card1 = makeCard(90, { plugin: "0.1.0" });
+  const card2 = makeCard(91, { plugin: "0.1.1" });
+  appendFileSync(log, JSON.stringify(card1) + "\n", "utf8");
+  appendFileSync(log, "{NOT_VALID_JSON\n", "utf8");
+  appendFileSync(log, JSON.stringify(card2) + "\n", "utf8");
+
+  const byPr90 = scorecardsForPr(90, log);
+  const byPr91 = scorecardsForPr(91, log);
+  expect(byPr90).toHaveLength(1);
+  expect(byPr91).toHaveLength(1);
+  // malformed line must not throw or corrupt results
+  expect(byPr90[0].version?.plugin).toBe("0.1.0");
+  expect(byPr91[0].version?.plugin).toBe("0.1.1");
+});
+
+test("readAll handles empty file — returns []", () => {
+  const log = tmpLog();
+  writeFileSync(log, "", "utf8");
+  expect(scorecardsForPr(1, log)).toEqual([]);
 });
 
 // ---------------------------------------------------------------------------
