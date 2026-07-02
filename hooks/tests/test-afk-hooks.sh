@@ -128,6 +128,45 @@ else
   ok "no comment attempt when no PR exists (correct)"
 fi
 
+echo "================ hooks.json SubagentStop matchers (exact-match CLI) ================"
+# CLI >=2.1.198 made hook matchers with hyphenated identifiers EXACT-match, not
+# substring. hooks.json matchers for afk-task-runner/code-reviewer must be
+# anchored regexes that match both the plugin-namespaced runtime agent_type
+# (agentic-platform:<name>) and the bare <name>, but must NOT match an
+# unrelated type that merely contains <name> as a substring.
+HOOKS_JSON="$HOOKS/hooks.json"
+
+check_matcher() {
+  local name="$1" matcher
+  matcher="$(jq -r --arg name "$name" '[.hooks.SubagentStop[].matcher] | map(select(test($name))) | .[0] // empty' "$HOOKS_JSON")"
+
+  if [[ -z "$matcher" ]]; then
+    bad "$name: no matcher found in hooks.json containing '$name'"
+    return
+  fi
+
+  if jq -n --arg m "$matcher" --arg s "agentic-platform:$name" '$s | test($m)' | grep -q true; then
+    ok "$name matcher '$matcher' matches namespaced type agentic-platform:$name"
+  else
+    bad "$name matcher '$matcher' does NOT match namespaced type agentic-platform:$name"
+  fi
+
+  if jq -n --arg m "$matcher" --arg s "$name" '$s | test($m)' | grep -q true; then
+    ok "$name matcher '$matcher' matches bare type $name"
+  else
+    bad "$name matcher '$matcher' does NOT match bare type $name"
+  fi
+
+  if jq -n --arg m "$matcher" --arg s "other:my-$name-x" '$s | test($m)' | grep -q true; then
+    bad "$name matcher '$matcher' incorrectly matches unrelated substring type other:my-$name-x"
+  else
+    ok "$name matcher '$matcher' does NOT match unrelated substring type other:my-$name-x"
+  fi
+}
+
+check_matcher "afk-task-runner"
+check_matcher "code-reviewer"
+
 echo "========================================"
 if [[ $fail -eq 0 ]]; then echo "ALL GREEN"; else echo "SOME FAILED"; fi
 exit $fail
