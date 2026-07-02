@@ -15,11 +15,20 @@
  */
 import { appendRun, type RunEntry, type AgentRole } from "../src/manifest";
 
-interface HookPayload {
+export interface HookPayload {
   transcript_path?: string;
+  agent_transcript_path?: string;
   session_id?: string;
   cwd?: string;
   hook_event_name?: string;
+}
+
+// SubagentStop payloads carry both `transcript_path` (the parent session's
+// transcript) and `agent_transcript_path` (the subagent's own transcript).
+// Prefer the agent's transcript so the Evaluator scores the right Trajectory.
+// Stop payloads (headless afk.sh, no parent) carry only `transcript_path`.
+export function pickTranscriptPath(payload: HookPayload): string | undefined {
+  return payload.agent_transcript_path ?? payload.transcript_path;
 }
 
 async function ghPrInfo(cwd: string): Promise<{ pr: number; sha?: string } | null> {
@@ -63,7 +72,7 @@ async function main(): Promise<void> {
   }
 
   const cwd = payload.cwd ?? process.cwd();
-  const transcriptPath = payload.transcript_path;
+  const transcriptPath = pickTranscriptPath(payload);
   if (!transcriptPath) {
     process.stderr.write("run-eval/capture: no transcript_path in payload; skipping\n");
     return;
@@ -91,6 +100,9 @@ async function main(): Promise<void> {
 }
 
 // Never block the agent: swallow everything and exit 0.
-main()
-  .catch((e) => process.stderr.write(`run-eval/capture: ${String(e)}\n`))
-  .finally(() => process.exit(0));
+// Guarded so importing this module (e.g. from tests) doesn't run main().
+if (import.meta.main) {
+  main()
+    .catch((e) => process.stderr.write(`run-eval/capture: ${String(e)}\n`))
+    .finally(() => process.exit(0));
+}
