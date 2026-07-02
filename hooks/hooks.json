@@ -13,7 +13,7 @@
     ],
     "SubagentStop": [
       {
-        "matcher": "afk-task-runner",
+        "matcher": "^(agentic-platform:)?afk-task-runner$",
         "hooks": [
           {
             "type": "command",
@@ -26,7 +26,7 @@
         ]
       },
       {
-        "matcher": "code-reviewer",
+        "matcher": "^(agentic-platform:)?code-reviewer$",
         "hooks": [
           {
             "type": "command",
