@@ -1,5 +1,5 @@
 {
-  "$comment": "Providers whose skills are vendored into the plugin by scripts/sync-skills.sh. Skills land flat in skills/<name>/ (each with a .vendored-from marker so re-syncs prune safely); attribution lands in vendor/<name>/. Add a provider here — no code changes needed. Each provider is mirrored: skills removed upstream or dropped from include_categories are pruned on the next sync.",
+  "$comment": "Providers whose skills are vendored into the plugin by scripts/sync-skills.sh. Skills land flat in skills/<name>/ (each with a .vendored-from marker so re-syncs prune safely); attribution lands in vendor/<name>/. A provider uses either `include_categories` (mirrors named category dirs, e.g. skills/<category>/<name>/) or `skills` (explicit [{name,path}] entries — a file lands as SKILL.md, a directory is copied recursively). Add a provider here — no code changes needed. Skills removed upstream, dropped from include_categories, or dropped from a skills[] list are pruned on the next sync.",
   "providers": [
     {
       "name": "mattpocock",
