@@ -131,6 +131,15 @@ test("latestExistingRunForPrByRole — skips a newer entry whose file is missing
   expect(entry!.sha).toBe("old-sha");
 });
 
+test("latestExistingRunForPrByRole — returns null when the role has zero entries at all (not just missing files)", () => {
+  const path = tmpManifest();
+  const dir = tmpDirFor(path);
+  const reviewerOnly = realFile(dir, "reviewer.jsonl");
+  appendRun(mk(75, reviewerOnly, "v1", "reviewer"), path);
+
+  expect(latestExistingRunForPrByRole(75, "runner", path)).toBeNull();
+});
+
 test("latestExistingRunForPrByRole — returns null when no entry for the role has an existing file", () => {
   const path = tmpManifest();
   const dir = tmpDirFor(path);
@@ -156,4 +165,39 @@ test("latestExistingRunForPrByRole — resolves runner and reviewer independentl
 
 test("latestExistingRunForPrByRole — missing manifest yields null (no throw)", () => {
   expect(latestExistingRunForPrByRole(1, "runner", "/nonexistent/manifest.jsonl")).toBeNull();
+});
+
+test("latestExistingRunForPrByRole — walks back past multiple consecutive phantom entries", () => {
+  const path = tmpManifest();
+  const dir = tmpDirFor(path);
+  const oldPath = realFile(dir, "old.jsonl");
+
+  appendRun(mk(73, oldPath, "old-sha", "runner"), path);
+  appendRun(mk(73, join(dir, "phantom-1.jsonl"), "p1", "runner"), path);
+  appendRun(mk(73, join(dir, "phantom-2.jsonl"), "p2", "runner"), path);
+  appendRun(mk(73, join(dir, "phantom-3.jsonl"), "p3", "runner"), path); // newest, phantom
+
+  const entry = latestExistingRunForPrByRole(73, "runner", path);
+  expect(entry).not.toBeNull();
+  expect(entry!.transcriptPath).toBe(oldPath);
+  expect(entry!.sha).toBe("old-sha");
+});
+
+test("latestExistingRunForPrByRole — injectable exists fn is used instead of real fs (no disk I/O)", () => {
+  const path = tmpManifest();
+  // Paths are never written to disk; the injected `exists` fn is the sole source of truth.
+  appendRun(mk(74, "/virtual/old.jsonl", "old-sha", "runner"), path);
+  appendRun(mk(74, "/virtual/new.jsonl", "new-sha", "runner"), path);
+
+  const exists = (p: string) => p === "/virtual/old.jsonl";
+  const entry = latestExistingRunForPrByRole(74, "runner", path, exists);
+  expect(entry).not.toBeNull();
+  expect(entry!.sha).toBe("old-sha");
+
+  // Sanity: with a predicate that always reports true, the newest entry wins as usual.
+  const entryAlwaysExists = latestExistingRunForPrByRole(74, "runner", path, () => true);
+  expect(entryAlwaysExists!.sha).toBe("new-sha");
+
+  // Sanity: with a predicate that always reports false, resolution yields null.
+  expect(latestExistingRunForPrByRole(74, "runner", path, () => false)).toBeNull();
 });

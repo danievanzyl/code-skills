@@ -126,3 +126,72 @@ test("reviewer entry's transcript missing → proceeds runner-only, advisory rev
   const efficiencyDims = card.dimensions.filter((d) => d.dimension === "efficiency");
   expect(efficiencyDims).toHaveLength(1);
 });
+
+test("no reviewer entry at all (not phantom, simply absent) → runner-only, no spurious 'proceeding runner-only' note", async () => {
+  const dir = tmpDir();
+  const manifest = tmpManifest(dir);
+  const runnerPath = writeTranscript(dir, "runner.jsonl", "sess-runner");
+
+  appendRun(mk(304, runnerPath, "r-sha", "runner"), manifest);
+
+  const { out, err, code } = await runEvalPr(["--pr", "304", "--manifest", manifest]);
+
+  expect(code).toBe(0);
+  expect(err).not.toContain("proceeding runner-only");
+  const card = extractScorecard(out);
+  const efficiencyDims = card.dimensions.filter((d) => d.dimension === "efficiency");
+  expect(efficiencyDims).toHaveLength(1);
+});
+
+test("explicit --transcript bypasses manifest resolution even when the newest manifest entry is phantom", async () => {
+  const dir = tmpDir();
+  const manifest = tmpManifest(dir);
+  const explicitPath = writeTranscript(dir, "explicit.jsonl", "sess-explicit");
+  const phantomPath = join(dir, "phantom.jsonl"); // never written, would otherwise error
+
+  appendRun(mk(305, phantomPath, "phantom-sha", "runner"), manifest);
+
+  const { out, err, code } = await runEvalPr([
+    "--pr",
+    "305",
+    "--manifest",
+    manifest,
+    "--transcript",
+    explicitPath,
+  ]);
+
+  expect(code).toBe(0);
+  expect(err).not.toContain("ENOENT");
+  const card = extractScorecard(out);
+  // --transcript carries no sha/runId of its own and the manifest lookup is
+  // skipped entirely, so the card's sha must be absent — never leaked from
+  // the phantom manifest entry.
+  expect(card.sha).toBeUndefined();
+});
+
+test("explicit --reviewer-transcript bypasses manifest resolution even when the newest reviewer entry is phantom", async () => {
+  const dir = tmpDir();
+  const manifest = tmpManifest(dir);
+  const runnerPath = writeTranscript(dir, "runner.jsonl", "sess-runner");
+  const explicitReviewerPath = writeTranscript(dir, "reviewer-explicit.jsonl", "sess-reviewer");
+  const phantomReviewerPath = join(dir, "reviewer-phantom.jsonl"); // never written
+
+  appendRun(mk(306, runnerPath, "r-sha", "runner"), manifest);
+  appendRun(mk(306, phantomReviewerPath, "v-sha", "reviewer"), manifest);
+
+  const { out, err, code } = await runEvalPr([
+    "--pr",
+    "306",
+    "--manifest",
+    manifest,
+    "--reviewer-transcript",
+    explicitReviewerPath,
+  ]);
+
+  expect(code).toBe(0);
+  expect(err).not.toContain("proceeding runner-only");
+  expect(err).not.toContain("ENOENT");
+  const card = extractScorecard(out);
+  const efficiencyDims = card.dimensions.filter((d) => d.dimension === "efficiency");
+  expect(efficiencyDims).toHaveLength(2);
+});
