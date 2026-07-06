@@ -8,6 +8,13 @@
       "license": "MIT",
       "include_categories": ["engineering", "productivity"],
       "exclude_skills": ["setup-matt-pocock-skills"]
+    },
+    {
+      "name": "ogulcancelik",
+      "repo": "ogulcancelik/herdr",
+      "ref": "master",
+      "license": "AGPL-3.0-or-later",
+      "skills": [{ "name": "herdr", "path": "SKILL.md" }]
     }
   ]
 }
