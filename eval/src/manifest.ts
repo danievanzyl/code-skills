@@ -19,6 +19,12 @@ export interface RunEntry {
    * Absent = "runner" for back-compat (legacy capture hook entries).
    */
   role?: AgentRole;
+  /**
+   * Raw `agent_type` from the hook payload (SubagentStop only; absent on Stop).
+   * Recorded for audit — durable instrumentation of what the CLI actually
+   * advertised, and the input to capture-run's role-attribution gate (#39).
+   */
+  agentType?: string;
   /** ISO timestamp the entry was written. */
   ts: string;
 }

@@ -9,6 +9,11 @@
 # never passes --fail-on-gate and always exits 0, so it cannot block the agent or
 # the merge (eval/security is a commit status, NOT a required branch-protection
 # check yet). Health + output logged.
+#
+# 2026-07-06 incident #2 (issue #39): a phantom SubagentStop event ran BOTH
+# hooks.json matcher groups despite mutually exclusive matchers, so this hook
+# fired for an internal harness agent, not the code-reviewer, and crashed.
+# Gate on the payload's own agent_type before doing any PR/eval work.
 set -uo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,6 +28,18 @@ ts() { date -u +%FT%TZ 2>/dev/null || date; }
 input=$(cat || true)
 agent_dir=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)
 agent_dir="${agent_dir:-${CLAUDE_PROJECT_DIR:-$PWD}}"
+event_name=$(printf '%s' "$input" | jq -r '.hook_event_name // empty' 2>/dev/null || true)
+agent_type=$(printf '%s' "$input" | jq -r '.agent_type // empty' 2>/dev/null || true)
+
+if [[ "$event_name" == "SubagentStop" ]]; then
+  case "$agent_type" in
+    code-reviewer | agentic-platform:code-reviewer) : ;;
+    *)
+      printf '%s eval skipped: agent_type "%s" is not code-reviewer\n' "$(ts)" "${agent_type:-none}" >>"$log" 2>/dev/null || true
+      exit 0
+      ;;
+  esac
+fi
 
 if ! command -v bun >/dev/null 2>&1; then
   printf '%s eval skipped: bun not on PATH\n' "$(ts)" >>"$log" 2>/dev/null || true

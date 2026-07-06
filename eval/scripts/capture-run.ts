@@ -22,6 +22,9 @@ export interface HookPayload {
   session_id?: string;
   cwd?: string;
   hook_event_name?: string;
+  /** SubagentStop only — which agent finished (e.g. "code-reviewer",
+   * "agentic-platform:afk-task-runner"). Absent on Stop payloads. */
+  agent_type?: string;
 }
 
 // SubagentStop payloads carry both `transcript_path` (the parent session's
@@ -45,6 +48,23 @@ export function pickTranscriptPath(
     return transcript_path;
   }
   return undefined;
+}
+
+// 2026-07-06 incident #2: a phantom SubagentStop event ran BOTH matcher groups
+// (afk-task-runner and code-reviewer) despite mutually-exclusive matchers,
+// writing the same trajectory to the manifest as role=runner AND
+// role=reviewer 40ms apart. The payload's agent_type is the CLI's own
+// declaration of which agent actually finished — gate on it so a
+// matcher-bypass (blank/internal agent_type) can never corrupt role
+// attribution. Stop payloads carry no agent_type and are unaffected
+// (headless afk.sh has no parent, always runner — issue #39).
+const RUNNER_AGENT_TYPES = ["afk-task-runner", "agentic-platform:afk-task-runner"];
+const REVIEWER_AGENT_TYPES = ["code-reviewer", "agentic-platform:code-reviewer"];
+
+export function agentTypeAllowsRole(payload: HookPayload, role: AgentRole): boolean {
+  if (payload.hook_event_name !== "SubagentStop") return true;
+  const allowed = role === "reviewer" ? REVIEWER_AGENT_TYPES : RUNNER_AGENT_TYPES;
+  return allowed.includes(payload.agent_type ?? "");
 }
 
 async function ghPrInfo(cwd: string): Promise<{ pr: number; sha?: string } | null> {
@@ -102,6 +122,14 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (!agentTypeAllowsRole(payload, role)) {
+    process.stderr.write(
+      `run-eval/capture: SubagentStop agent_type "${payload.agent_type ?? "none"}" ` +
+        `does not match role=${role}; refusing to write manifest entry, skipping\n`,
+    );
+    return;
+  }
+
   const info = await ghPrInfo(cwd);
   if (!info) {
     process.stderr.write("run-eval/capture: no PR for this worktree; skipping\n");
@@ -115,6 +143,7 @@ async function main(): Promise<void> {
     runId: payload.session_id,
     event: payload.hook_event_name,
     role,
+    agentType: payload.agent_type,
     ts: new Date().toISOString(),
   };
   appendRun(entry);
