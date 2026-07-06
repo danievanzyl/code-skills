@@ -1,20 +1,23 @@
 name: tests
 
-# Tests for the Run Evaluator (eval/) and the shell hooks (hooks/).
-# Runs on PRs and on pushes to main that touch those paths. Pure test job — it
-# never pushes; release.yml owns versioning on push to main.
+# Tests for the Run Evaluator (eval/), the shell hooks (hooks/), and the
+# skill-vendoring script (scripts/). Runs on PRs and on pushes to main that
+# touch those paths. Pure test job — it never pushes; release.yml owns
+# versioning on push to main.
 
 on:
   pull_request:
     paths:
       - "eval/**"
       - "hooks/**"
+      - "scripts/**"
       - ".github/workflows/tests.yml"
   push:
     branches: [main]
     paths:
       - "eval/**"
       - "hooks/**"
+      - "scripts/**"
       - ".github/workflows/tests.yml"
 
 permissions:
@@ -50,3 +53,6 @@ jobs:
           git config --global user.name "CI"
           bash hooks/tests/test-afk-hooks.sh
           bash hooks/tests/test-eval-hooks.sh
+
+      - name: sync-skills regression tests (offline fixtures)
+        run: bash scripts/tests/test-sync-skills.sh
