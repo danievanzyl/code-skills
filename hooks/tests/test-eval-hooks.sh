@@ -85,7 +85,7 @@ esac
 STUB
 chmod +x "$NOPR/gh"
 STATE3="$TMP/state3"
-printf '{"cwd":"%s","hook_event_name":"SubagentStop"}' "$WT" | \
+printf '{"cwd":"%s","agent_type":"code-reviewer","hook_event_name":"SubagentStop"}' "$WT" | \
   PATH="$NOPR:$PATH" RUN_EVAL_STATE_DIR="$STATE3" CLAUDE_PLUGIN_ROOT="$ROOT" bash "$HOOKS/run-evaluator.sh"
 rc=$?
 [[ $rc -eq 0 ]] && ok "run-evaluator exit 0 when no PR" || bad "run-evaluator exit $rc when no PR"
@@ -116,7 +116,7 @@ STATE4="$TMP/state4"; mkdir -p "$STATE4"
 printf '{"pr":77,"transcriptPath":"%s","sha":"deadbeefcafe","runId":"r1","event":"SubagentStop","ts":"2026-06-30T00:00:00Z"}\n' \
   "$FIXTURE" > "$STATE4/manifest.jsonl"
 
-printf '{"cwd":"%s","hook_event_name":"SubagentStop"}' "$WT" | \
+printf '{"cwd":"%s","agent_type":"code-reviewer","hook_event_name":"SubagentStop"}' "$WT" | \
   PATH="$HAPPY:$PATH" RUN_EVAL_STATE_DIR="$STATE4" CLAUDE_PLUGIN_ROOT="$ROOT" bash "$HOOKS/run-evaluator.sh"
 rc=$?
 [[ $rc -eq 0 ]] && ok "run-evaluator exit 0 on happy path" || bad "run-evaluator exit $rc on happy path"
@@ -133,16 +133,84 @@ fi
 
 echo "================ capture-run.sh --role reviewer (writes reviewer entry) ================"
 STATE5="$TMP/state5"
-payload_rev="{\"cwd\":\"$WT\",\"transcript_path\":\"$FIXTURE\",\"session_id\":\"sess-rev\",\"hook_event_name\":\"SubagentStop\"}"
+payload_rev="{\"cwd\":\"$WT\",\"transcript_path\":\"$FIXTURE\",\"session_id\":\"sess-rev\",\"agent_type\":\"code-reviewer\",\"hook_event_name\":\"SubagentStop\"}"
 printf '%s' "$payload_rev" | \
   PATH="$BIN:$PATH" RUN_EVAL_STATE_DIR="$STATE5" CLAUDE_PLUGIN_ROOT="$ROOT" bash "$HOOKS/capture-run.sh" --role reviewer
 rc=$?
 [[ $rc -eq 0 ]] && ok "capture-run --role reviewer exit 0" || bad "capture-run --role reviewer exit $rc"
 
-if [[ -f "$STATE5/manifest.jsonl" ]] && grep -q '"role":"reviewer"' "$STATE5/manifest.jsonl"; then
-  ok "manifest entry carries role=reviewer"
+if [[ -f "$STATE5/manifest.jsonl" ]] && grep -q '"role":"reviewer"' "$STATE5/manifest.jsonl" \
+   && grep -q '"agentType":"code-reviewer"' "$STATE5/manifest.jsonl"; then
+  ok "manifest entry carries role=reviewer and agentType=code-reviewer"
 else
-  bad "manifest entry missing role=reviewer ($(cat "$STATE5/manifest.jsonl" 2>/dev/null))"
+  bad "manifest entry missing role=reviewer/agentType ($(cat "$STATE5/manifest.jsonl" 2>/dev/null))"
+fi
+
+echo "================ capture-run.sh --role reviewer with wrong agent_type (issue #39 gate, no entry) ================"
+STATE6="$TMP/state6"
+payload_phantom="{\"cwd\":\"$WT\",\"transcript_path\":\"$FIXTURE\",\"session_id\":\"sess-phantom\",\"agent_type\":\"away-summary\",\"hook_event_name\":\"SubagentStop\"}"
+printf '%s' "$payload_phantom" | \
+  PATH="$BIN:$PATH" RUN_EVAL_STATE_DIR="$STATE6" CLAUDE_PLUGIN_ROOT="$ROOT" bash "$HOOKS/capture-run.sh" --role reviewer
+rc=$?
+[[ $rc -eq 0 ]] && ok "capture-run --role reviewer (bad agent_type) exit 0" || bad "capture-run --role reviewer (bad agent_type) exit $rc"
+if [[ -f "$STATE6/manifest.jsonl" ]]; then
+  bad "wrote a manifest entry despite agent_type mismatch (issue #39 gate failed)"
+else
+  ok "no manifest entry written when agent_type does not match --role (correct)"
+fi
+
+echo "================ capture-run.sh --role reviewer with MISSING agent_type (issue #39 gate, no entry) ================"
+# This is the actual 2026-07-06 incident shape: the phantom SubagentStop
+# carried NO agent_type at all, not merely a wrong one.
+STATE6B="$TMP/state6b"
+payload_missing="{\"cwd\":\"$WT\",\"transcript_path\":\"$FIXTURE\",\"session_id\":\"sess-missing\",\"hook_event_name\":\"SubagentStop\"}"
+printf '%s' "$payload_missing" | \
+  PATH="$BIN:$PATH" RUN_EVAL_STATE_DIR="$STATE6B" CLAUDE_PLUGIN_ROOT="$ROOT" bash "$HOOKS/capture-run.sh" --role reviewer
+rc=$?
+[[ $rc -eq 0 ]] && ok "capture-run --role reviewer (missing agent_type) exit 0" || bad "capture-run --role reviewer (missing agent_type) exit $rc"
+if [[ -f "$STATE6B/manifest.jsonl" ]]; then
+  bad "wrote a manifest entry despite missing agent_type (issue #39 gate failed on the actual incident shape)"
+else
+  ok "no manifest entry written when agent_type is missing (correct)"
+fi
+
+echo "================ run-evaluator.sh (SubagentStop, non-code-reviewer agent_type -> skip, no eval-pr) ================"
+STATE7="$TMP/state7"
+# NOPR's gh stub is irrelevant here — the agent_type gate must short-circuit
+# before any `gh` call is made.
+printf '{"cwd":"%s","agent_type":"away-summary","hook_event_name":"SubagentStop"}' "$WT" | \
+  PATH="$NOPR:$PATH" RUN_EVAL_STATE_DIR="$STATE7" CLAUDE_PLUGIN_ROOT="$ROOT" bash "$HOOKS/run-evaluator.sh"
+rc=$?
+[[ $rc -eq 0 ]] && ok "run-evaluator exit 0 when agent_type is not code-reviewer" || bad "run-evaluator exit $rc when agent_type is not code-reviewer"
+if grep -q 'agent_type "away-summary" is not code-reviewer' "$STATE7/evaluator.log" 2>/dev/null; then
+  ok "logged skip for non-code-reviewer agent_type"
+else
+  bad "did not log skip for non-code-reviewer agent_type (log: $(cat "$STATE7/evaluator.log" 2>/dev/null))"
+fi
+if grep -q "evaluating PR" "$STATE7/evaluator.log" 2>/dev/null; then
+  bad "invoked the evaluator despite agent_type mismatch (issue #39 gate failed)"
+else
+  ok "did not invoke the evaluator (correct)"
+fi
+
+echo "================ run-evaluator.sh (SubagentStop, MISSING agent_type -> skip, no eval-pr) ================"
+# This is the actual 2026-07-06 incident shape: the phantom SubagentStop
+# carried NO agent_type at all (not merely a wrong one). A gate that only
+# rejects a present-but-wrong value would miss it.
+STATE8="$TMP/state8"
+printf '{"cwd":"%s","hook_event_name":"SubagentStop"}' "$WT" | \
+  PATH="$NOPR:$PATH" RUN_EVAL_STATE_DIR="$STATE8" CLAUDE_PLUGIN_ROOT="$ROOT" bash "$HOOKS/run-evaluator.sh"
+rc=$?
+[[ $rc -eq 0 ]] && ok "run-evaluator exit 0 when agent_type is missing" || bad "run-evaluator exit $rc when agent_type is missing"
+if grep -q 'agent_type "none" is not code-reviewer' "$STATE8/evaluator.log" 2>/dev/null; then
+  ok "logged skip for missing agent_type"
+else
+  bad "did not log skip for missing agent_type (log: $(cat "$STATE8/evaluator.log" 2>/dev/null))"
+fi
+if grep -q "evaluating PR" "$STATE8/evaluator.log" 2>/dev/null; then
+  bad "invoked the evaluator despite missing agent_type (issue #39 gate failed on the actual incident shape)"
+else
+  ok "did not invoke the evaluator (correct)"
 fi
 
 echo "========================================"

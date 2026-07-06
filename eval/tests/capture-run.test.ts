@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RunEntry } from "../src/manifest";
-import { pickTranscriptPath, type HookPayload } from "../scripts/capture-run";
+import { pickTranscriptPath, agentTypeAllowsRole, type HookPayload } from "../scripts/capture-run";
 
 // --- SubagentStop/Stop transcript-path selection (issue #34, hardened #37) ---
 // Issue #37: capture-run must verify a transcript exists on disk before
@@ -78,6 +78,91 @@ test("empty-string agent_transcript_path is not an existing file, so an existing
     agent_transcript_path: "",
   };
   expect(pickTranscriptPath(payload)).toBe(parentPath);
+});
+
+// --- agent_type role gating (issue #39) ---
+//
+// A phantom SubagentStop event can run both matcher groups (afk-task-runner
+// AND code-reviewer) despite mutually exclusive matchers, corrupting role
+// attribution. Gate on the payload's own agent_type declaration: refuse to
+// write role=reviewer unless agent_type is code-reviewer (namespaced or not),
+// and refuse role=runner from SubagentStop unless agent_type is
+// afk-task-runner. Stop payloads carry no agent_type and are unaffected.
+
+test("agentTypeAllowsRole: SubagentStop + role=runner + agent_type=afk-task-runner → true", () => {
+  expect(
+    agentTypeAllowsRole(
+      { hook_event_name: "SubagentStop", agent_type: "afk-task-runner" },
+      "runner",
+    ),
+  ).toBe(true);
+});
+
+test("agentTypeAllowsRole: SubagentStop + role=runner + namespaced agent_type → true", () => {
+  expect(
+    agentTypeAllowsRole(
+      { hook_event_name: "SubagentStop", agent_type: "agentic-platform:afk-task-runner" },
+      "runner",
+    ),
+  ).toBe(true);
+});
+
+test("agentTypeAllowsRole: SubagentStop + role=runner + agent_type=code-reviewer → false", () => {
+  expect(
+    agentTypeAllowsRole(
+      { hook_event_name: "SubagentStop", agent_type: "code-reviewer" },
+      "runner",
+    ),
+  ).toBe(false);
+});
+
+test("agentTypeAllowsRole: SubagentStop + role=runner + missing agent_type → false", () => {
+  expect(agentTypeAllowsRole({ hook_event_name: "SubagentStop" }, "runner")).toBe(false);
+});
+
+test("agentTypeAllowsRole: SubagentStop + role=reviewer + agent_type=code-reviewer → true", () => {
+  expect(
+    agentTypeAllowsRole(
+      { hook_event_name: "SubagentStop", agent_type: "code-reviewer" },
+      "reviewer",
+    ),
+  ).toBe(true);
+});
+
+test("agentTypeAllowsRole: SubagentStop + role=reviewer + namespaced agent_type → true", () => {
+  expect(
+    agentTypeAllowsRole(
+      { hook_event_name: "SubagentStop", agent_type: "agentic-platform:code-reviewer" },
+      "reviewer",
+    ),
+  ).toBe(true);
+});
+
+test("agentTypeAllowsRole: SubagentStop + role=reviewer + agent_type=afk-task-runner → false", () => {
+  expect(
+    agentTypeAllowsRole(
+      { hook_event_name: "SubagentStop", agent_type: "afk-task-runner" },
+      "reviewer",
+    ),
+  ).toBe(false);
+});
+
+test("agentTypeAllowsRole: SubagentStop + role=reviewer + missing agent_type → false", () => {
+  expect(agentTypeAllowsRole({ hook_event_name: "SubagentStop" }, "reviewer")).toBe(false);
+});
+
+test("agentTypeAllowsRole: SubagentStop + role=reviewer + internal/phantom agent_type → false", () => {
+  expect(
+    agentTypeAllowsRole(
+      { hook_event_name: "SubagentStop", agent_type: "away-summary" },
+      "reviewer",
+    ),
+  ).toBe(false);
+});
+
+test("agentTypeAllowsRole: Stop payload (no agent_type) → true regardless of role (back-compat)", () => {
+  expect(agentTypeAllowsRole({ hook_event_name: "Stop" }, "runner")).toBe(true);
+  expect(agentTypeAllowsRole({ hook_event_name: "Stop" }, "reviewer")).toBe(true);
 });
 
 // --- End-to-end: guard against a silently no-op hook (issue #34 highest risk) ---
@@ -201,6 +286,7 @@ test("fallback-linked entry preserves pr, sha, runId, event, role and ts untouch
       transcript_path: parentPath,
       agent_transcript_path: phantomAgentPath,
       session_id: "sess-123",
+      agent_type: "code-reviewer", // matches --role reviewer (issue #39 gate)
     },
     stateDir,
     ["--role", "reviewer"],
@@ -222,6 +308,7 @@ test("fallback-linked entry preserves pr, sha, runId, event, role and ts untouch
   expect(entry.runId).toBe("sess-123");
   expect(entry.event).toBe("SubagentStop");
   expect(entry.role).toBe("reviewer"); // --role forwarded untouched
+  expect(entry.agentType).toBe("code-reviewer");
   const tsMs = new Date(entry.ts).getTime();
   expect(tsMs).toBeGreaterThanOrEqual(before);
   expect(tsMs).toBeLessThanOrEqual(after);
@@ -239,6 +326,7 @@ test("fallback-linked entry defaults role to runner when --role is omitted", asy
       hook_event_name: "SubagentStop",
       transcript_path: parentPath,
       agent_transcript_path: phantomAgentPath,
+      agent_type: "afk-task-runner", // matches default role=runner (issue #39 gate)
     },
     stateDir,
     [],
@@ -251,4 +339,113 @@ test("fallback-linked entry defaults role to runner when --role is omitted", asy
   ) as RunEntry;
   expect(entry.role).toBe("runner");
   expect(entry.transcriptPath).toBe(parentPath);
+  expect(entry.agentType).toBe("afk-task-runner");
+});
+
+// --- Regression: 2026-07-06 incident #2 — phantom SubagentStop ran both
+// matcher groups (issue #39) ---
+//
+// One SubagentStop event fired with a phantom/internal agent_type (or none)
+// ran BOTH hooks.json matcher groups despite mutually exclusive matchers —
+// the same trajectory was written as role=runner AND role=reviewer 40ms
+// apart. Replay both invocations against the same payload; neither must
+// write a manifest entry. A legitimate code-reviewer payload with
+// --role reviewer must still write exactly one, correctly-attributed entry.
+
+test("regression: phantom agent_type through both role invocations yields zero manifest entries", async () => {
+  const stateDir = mkdtempSync(join(tmpdir(), "run-eval-capture-"));
+  const binDir = mkdtempSync(join(tmpdir(), "run-eval-fakebin-"));
+  const transcriptPath = tmpFile(stateDir, "session.jsonl");
+  const extraEnv = fakeGhOnPath(binDir, 99, "cafebabe");
+  const phantomPayload = {
+    hook_event_name: "SubagentStop",
+    transcript_path: transcriptPath,
+    agent_type: "away-summary", // internal harness agent — matches neither matcher
+  };
+
+  const runnerResult = await runCapture(phantomPayload, stateDir, [], extraEnv);
+  const reviewerResult = await runCapture(
+    phantomPayload,
+    stateDir,
+    ["--role", "reviewer"],
+    extraEnv,
+  );
+
+  expect(runnerResult.code).toBe(0);
+  expect(reviewerResult.code).toBe(0);
+  expect(existsSync(join(stateDir, "manifest.jsonl"))).toBe(false);
+});
+
+test("regression: missing agent_type through both role invocations yields zero manifest entries", async () => {
+  const stateDir = mkdtempSync(join(tmpdir(), "run-eval-capture-"));
+  const binDir = mkdtempSync(join(tmpdir(), "run-eval-fakebin-"));
+  const transcriptPath = tmpFile(stateDir, "session.jsonl");
+  const extraEnv = fakeGhOnPath(binDir, 99, "cafebabe");
+  const phantomPayload = {
+    hook_event_name: "SubagentStop",
+    transcript_path: transcriptPath,
+  };
+
+  const runnerResult = await runCapture(phantomPayload, stateDir, [], extraEnv);
+  const reviewerResult = await runCapture(
+    phantomPayload,
+    stateDir,
+    ["--role", "reviewer"],
+    extraEnv,
+  );
+
+  expect(runnerResult.code).toBe(0);
+  expect(reviewerResult.code).toBe(0);
+  expect(existsSync(join(stateDir, "manifest.jsonl"))).toBe(false);
+});
+
+test("legitimate code-reviewer payload with --role reviewer yields exactly one entry with agentType recorded", async () => {
+  const stateDir = mkdtempSync(join(tmpdir(), "run-eval-capture-"));
+  const binDir = mkdtempSync(join(tmpdir(), "run-eval-fakebin-"));
+  const transcriptPath = tmpFile(stateDir, "session.jsonl");
+  const extraEnv = fakeGhOnPath(binDir, 99, "cafebabe");
+  const payload = {
+    hook_event_name: "SubagentStop",
+    transcript_path: transcriptPath,
+    agent_type: "code-reviewer",
+  };
+
+  const { code } = await runCapture(payload, stateDir, ["--role", "reviewer"], extraEnv);
+  expect(code).toBe(0);
+
+  const lines = readFileSync(join(stateDir, "manifest.jsonl"), "utf8").trim().split("\n");
+  expect(lines).toHaveLength(1);
+  const entry = JSON.parse(lines[0]) as RunEntry;
+  expect(entry.role).toBe("reviewer");
+  expect(entry.agentType).toBe("code-reviewer");
+});
+
+test("regression: legitimate agent_type through both matcher groups (bypass fires both) yields exactly one correctly-attributed entry", async () => {
+  // The actual bypass mechanics of the 2026-07-06 incident: hooks.json has
+  // mutually exclusive matchers, but the CLI ran BOTH the --role runner and
+  // --role reviewer invocations against the SAME SubagentStop payload. Even
+  // when the payload's agent_type is a legitimate one (not phantom/missing),
+  // only the invocation whose role it actually matches may write an entry.
+  const stateDir = mkdtempSync(join(tmpdir(), "run-eval-capture-"));
+  const binDir = mkdtempSync(join(tmpdir(), "run-eval-fakebin-"));
+  const transcriptPath = tmpFile(stateDir, "session.jsonl");
+  const extraEnv = fakeGhOnPath(binDir, 99, "cafebabe");
+  const payload = {
+    hook_event_name: "SubagentStop",
+    transcript_path: transcriptPath,
+    session_id: "sess-bypass",
+    agent_type: "afk-task-runner",
+  };
+
+  const runnerResult = await runCapture(payload, stateDir, [], extraEnv);
+  const reviewerResult = await runCapture(payload, stateDir, ["--role", "reviewer"], extraEnv);
+
+  expect(runnerResult.code).toBe(0);
+  expect(reviewerResult.code).toBe(0);
+
+  const lines = readFileSync(join(stateDir, "manifest.jsonl"), "utf8").trim().split("\n");
+  expect(lines).toHaveLength(1);
+  const entry = JSON.parse(lines[0]) as RunEntry;
+  expect(entry.role).toBe("runner");
+  expect(entry.agentType).toBe("afk-task-runner");
 });
