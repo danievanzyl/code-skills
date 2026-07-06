@@ -108,6 +108,45 @@ while [ "$pi" -lt "$nprov" ]; do
     done
   done
 
+  # Optional `skills[]` shape: single explicit path per skill (dual to
+  # include_categories — a provider uses one or the other). File -> SKILL.md;
+  # directory -> copied recursively. Upstream LICENSE travels INTO the skill
+  # dir too (not just vendor/<provider>/), since e.g. herdr is AGPL and the
+  # license must accompany the skill when installed via `npx skills add`.
+  nskills="$(printf '%s' "$prov" | jq -r '.skills | length')"
+  si=0
+  while [ "$si" -lt "$nskills" ]; do
+    skill="$(printf '%s' "$prov" | jq -c ".skills[$si]")"
+    si=$((si + 1))
+    skname="$(printf '%s' "$skill" | jq -r '.name')"
+    skpath="$(printf '%s' "$skill" | jq -r '.path')"
+    srcpath="$clone/$skpath"
+
+    # Collision: same guard as include_categories — never clobber hand-authored
+    # or another provider's skill (ours were pruned above).
+    if [ -e "$SKILLS_DIR/$skname" ]; then
+      echo "  ! SKIPPED (collision): $skname  (already exists in skills/)" >&2
+      continue
+    fi
+
+    if [ -f "$srcpath" ]; then
+      mkdir -p "$SKILLS_DIR/$skname"
+      cp -p "$srcpath" "$SKILLS_DIR/$skname/SKILL.md"
+    elif [ -d "$srcpath" ]; then
+      cp -Rp "$srcpath" "$SKILLS_DIR/$skname"
+    else
+      echo "  ! path not found upstream: $skpath" >&2
+      continue
+    fi
+
+    [ -f "$clone/LICENSE" ] && cp "$clone/LICENSE" "$SKILLS_DIR/$skname/LICENSE"
+    printf '{"provider":"%s","repo":"%s","ref":"%s","sha":"%s","upstream":"%s"}\n' \
+      "$name" "$repo" "$ref" "$sha" "$skpath" > "$SKILLS_DIR/$skname/$MARKER"
+    included="$included $skname"
+    total=$((total + 1))
+    echo "  + $skname  (from $skpath)"
+  done
+
   # Attribution + provenance (top-level vendor/<provider>/, never scanned as a skill).
   [ -f "$clone/LICENSE" ] && cp "$clone/LICENSE" "$VENDOR_DIR/$name/LICENSE"
   names_json="$(printf '%s\n' $included | jq -R . | jq -s 'map(select(length>0)) | sort')"
