@@ -419,3 +419,33 @@ test("legitimate code-reviewer payload with --role reviewer yields exactly one e
   expect(entry.role).toBe("reviewer");
   expect(entry.agentType).toBe("code-reviewer");
 });
+
+test("regression: legitimate agent_type through both matcher groups (bypass fires both) yields exactly one correctly-attributed entry", async () => {
+  // The actual bypass mechanics of the 2026-07-06 incident: hooks.json has
+  // mutually exclusive matchers, but the CLI ran BOTH the --role runner and
+  // --role reviewer invocations against the SAME SubagentStop payload. Even
+  // when the payload's agent_type is a legitimate one (not phantom/missing),
+  // only the invocation whose role it actually matches may write an entry.
+  const stateDir = mkdtempSync(join(tmpdir(), "run-eval-capture-"));
+  const binDir = mkdtempSync(join(tmpdir(), "run-eval-fakebin-"));
+  const transcriptPath = tmpFile(stateDir, "session.jsonl");
+  const extraEnv = fakeGhOnPath(binDir, 99, "cafebabe");
+  const payload = {
+    hook_event_name: "SubagentStop",
+    transcript_path: transcriptPath,
+    session_id: "sess-bypass",
+    agent_type: "afk-task-runner",
+  };
+
+  const runnerResult = await runCapture(payload, stateDir, [], extraEnv);
+  const reviewerResult = await runCapture(payload, stateDir, ["--role", "reviewer"], extraEnv);
+
+  expect(runnerResult.code).toBe(0);
+  expect(reviewerResult.code).toBe(0);
+
+  const lines = readFileSync(join(stateDir, "manifest.jsonl"), "utf8").trim().split("\n");
+  expect(lines).toHaveLength(1);
+  const entry = JSON.parse(lines[0]) as RunEntry;
+  expect(entry.role).toBe("runner");
+  expect(entry.agentType).toBe("afk-task-runner");
+});
