@@ -1,12 +1,13 @@
 import { test, expect } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   appendRun,
   runsForPr,
   latestRunForPr,
   latestRunForPrByRole,
+  latestExistingRunForPrByRole,
   type RunEntry,
   type AgentRole,
 } from "../src/manifest";
@@ -95,4 +96,64 @@ test("latestRunForPrByRole — legacy entries (no role field) do not match revie
   // Absent role = runner; reviewer query must return null, not the legacy entry.
   appendRun(mk(60, "/t/legacy.jsonl", "leg"), path);
   expect(latestRunForPrByRole(60, "reviewer", path)).toBeNull();
+});
+
+// --- Existence-aware resolution (issue #38) ---
+//
+// The manifest can contain entries whose transcriptPath was never written to
+// disk (a phantom SubagentStop path — 2026-07-06 incident). Resolution must
+// walk back per role to the newest entry whose file exists, using real files
+// on disk so the exists check is exercised for real, not just mocked.
+
+function tmpDirFor(path: string): string {
+  return join(dirname(path), "transcripts");
+}
+
+function realFile(dir: string, name: string): string {
+  const p = join(dir, name);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(p, "{}\n", "utf8");
+  return p;
+}
+
+test("latestExistingRunForPrByRole — skips a newer entry whose file is missing, returns the older existing one", () => {
+  const path = tmpManifest();
+  const dir = tmpDirFor(path);
+  const oldPath = realFile(dir, "old.jsonl");
+  const phantomPath = join(dir, "phantom.jsonl"); // never written
+
+  appendRun(mk(70, oldPath, "old-sha", "runner"), path);
+  appendRun(mk(70, phantomPath, "new-sha", "runner"), path); // newest, phantom
+
+  const entry = latestExistingRunForPrByRole(70, "runner", path);
+  expect(entry).not.toBeNull();
+  expect(entry!.transcriptPath).toBe(oldPath);
+  expect(entry!.sha).toBe("old-sha");
+});
+
+test("latestExistingRunForPrByRole — returns null when no entry for the role has an existing file", () => {
+  const path = tmpManifest();
+  const dir = tmpDirFor(path);
+  appendRun(mk(71, join(dir, "phantom-a.jsonl"), "a", "runner"), path);
+  appendRun(mk(71, join(dir, "phantom-b.jsonl"), "b", "runner"), path);
+
+  expect(latestExistingRunForPrByRole(71, "runner", path)).toBeNull();
+});
+
+test("latestExistingRunForPrByRole — resolves runner and reviewer independently, each skipping their own phantoms", () => {
+  const path = tmpManifest();
+  const dir = tmpDirFor(path);
+  const runnerOld = realFile(dir, "runner-old.jsonl");
+  const reviewerReal = realFile(dir, "reviewer.jsonl");
+
+  appendRun(mk(72, runnerOld, "r-old", "runner"), path);
+  appendRun(mk(72, join(dir, "runner-phantom.jsonl"), "r-new", "runner"), path);
+  appendRun(mk(72, reviewerReal, "v1", "reviewer"), path);
+
+  expect(latestExistingRunForPrByRole(72, "runner", path)!.transcriptPath).toBe(runnerOld);
+  expect(latestExistingRunForPrByRole(72, "reviewer", path)!.transcriptPath).toBe(reviewerReal);
+});
+
+test("latestExistingRunForPrByRole — missing manifest yields null (no throw)", () => {
+  expect(latestExistingRunForPrByRole(1, "runner", "/nonexistent/manifest.jsonl")).toBeNull();
 });

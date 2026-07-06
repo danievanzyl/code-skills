@@ -12,13 +12,17 @@
  *   bun run scripts/eval-pr.ts --pr 123 --repo owner/repo --publish
  *   bun run scripts/eval-pr.ts --pr 123 --transcript ./t.jsonl --diff ./pr.diff
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { loadRubric } from "../src/rubric/loader";
 import { parseTrajectoryFile } from "../src/trajectory/parser";
 import { scoreSecurity } from "../src/scorers/security";
 import { scoreEfficiency } from "../src/scorers/efficiency";
 import { buildScorecard, renderMarkdown } from "../src/scorecard/build";
-import { latestRunForPr, latestRunForPrByRole } from "../src/manifest";
+import {
+  latestRunForPr,
+  latestRunForPrByRole,
+  latestExistingRunForPrByRole,
+} from "../src/manifest";
 import { publishScorecard } from "../src/publish/gh";
 import { resolveVersion } from "../src/version";
 import { persistScorecard } from "../src/store";
@@ -77,15 +81,18 @@ async function main(): Promise<number> {
   if (typeof args.transcript === "string") {
     transcriptPath = args.transcript;
   } else {
-    // Prefer role-filtered lookup (absent role treated as runner for back-compat).
+    // Resolve the newest runner entry WHOSE transcript still exists on disk,
+    // walking back past phantom paths (e.g. a SubagentStop advertised a
+    // transcript that was never written — 2026-07-06 incident, issue #38).
     // Fall back to unfiltered latestRunForPr only as defense-in-depth: if future
     // changes alter the absent-role assumption, this avoids a hard error.
+    const fallback = latestRunForPr(pr, manifestPath);
     const entry =
-      latestRunForPrByRole(pr, "runner", manifestPath) ??
-      latestRunForPr(pr, manifestPath);
+      latestExistingRunForPrByRole(pr, "runner", manifestPath) ??
+      (fallback && existsSync(fallback.transcriptPath) ? fallback : null);
     if (!entry) {
       process.stderr.write(
-        `error: no manifest entry for PR #${pr}. Pass --transcript or check the capture hook.\n`,
+        `error: no manifest entry with an existing transcript for PR #${pr}. Pass --transcript or check the capture hook.\n`,
       );
       return 2;
     }
@@ -96,13 +103,19 @@ async function main(): Promise<number> {
 
   const trajectory = parseTrajectoryFile(transcriptPath);
 
-  // Resolve the Reviewer Trajectory independently (optional — may not exist yet).
+  // Resolve the Reviewer Trajectory independently (optional — may not exist yet,
+  // and a missing file must not block the runner-only eval, issue #38).
   let reviewerTranscriptPath: string | undefined;
   if (typeof args["reviewer-transcript"] === "string") {
     reviewerTranscriptPath = args["reviewer-transcript"];
   } else {
-    const reviewerEntry = latestRunForPrByRole(pr, "reviewer", manifestPath);
+    const reviewerEntry = latestExistingRunForPrByRole(pr, "reviewer", manifestPath);
     reviewerTranscriptPath = reviewerEntry?.transcriptPath;
+    if (!reviewerEntry && latestRunForPrByRole(pr, "reviewer", manifestPath)) {
+      process.stderr.write(
+        "run-eval: reviewer manifest entry's transcript is missing on disk; proceeding runner-only\n",
+      );
+    }
   }
   const reviewerTrajectory = reviewerTranscriptPath
     ? parseTrajectoryFile(reviewerTranscriptPath)
