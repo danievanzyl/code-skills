@@ -13,6 +13,7 @@
  * It is a linker, never a collector: it records WHERE the transcript is, it does
  * not parse or copy it. It must never block the agent — it always exits 0.
  */
+import { existsSync } from "node:fs";
 import { appendRun, type RunEntry, type AgentRole } from "../src/manifest";
 
 export interface HookPayload {
@@ -27,8 +28,23 @@ export interface HookPayload {
 // transcript) and `agent_transcript_path` (the subagent's own transcript).
 // Prefer the agent's transcript so the Evaluator scores the right Trajectory.
 // Stop payloads (headless afk.sh, no parent) carry only `transcript_path`.
-export function pickTranscriptPath(payload: HookPayload): string | undefined {
-  return payload.agent_transcript_path ?? payload.transcript_path;
+//
+// The CLI can advertise an `agent_transcript_path` that was never written to
+// disk (e.g. internal harness agents on SubagentStop — 2026-07-06 incident).
+// Only link a path that actually exists, falling back to `transcript_path`,
+// else giving up — never link a phantom path into the manifest (issue #37).
+export function pickTranscriptPath(
+  payload: HookPayload,
+  exists: (path: string) => boolean = existsSync,
+): string | undefined {
+  const { agent_transcript_path, transcript_path } = payload;
+  if (agent_transcript_path && exists(agent_transcript_path)) {
+    return agent_transcript_path;
+  }
+  if (transcript_path && exists(transcript_path)) {
+    return transcript_path;
+  }
+  return undefined;
 }
 
 async function ghPrInfo(cwd: string): Promise<{ pr: number; sha?: string } | null> {
@@ -74,7 +90,15 @@ async function main(): Promise<void> {
   const cwd = payload.cwd ?? process.cwd();
   const transcriptPath = pickTranscriptPath(payload);
   if (!transcriptPath) {
-    process.stderr.write("run-eval/capture: no transcript_path in payload; skipping\n");
+    if (payload.agent_transcript_path || payload.transcript_path) {
+      process.stderr.write(
+        "run-eval/capture: no transcript file exists on disk " +
+          `(agent_transcript_path=${payload.agent_transcript_path ?? "none"}, ` +
+          `transcript_path=${payload.transcript_path ?? "none"}); skipping\n`,
+      );
+    } else {
+      process.stderr.write("run-eval/capture: no transcript_path in payload; skipping\n");
+    }
     return;
   }
 

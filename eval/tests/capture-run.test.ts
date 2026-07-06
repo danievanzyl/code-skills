@@ -1,26 +1,64 @@
 import { test, expect } from "bun:test";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pickTranscriptPath, type HookPayload } from "../scripts/capture-run";
 
-// --- SubagentStop/Stop transcript-path selection (issue #34) ---
+// --- SubagentStop/Stop transcript-path selection (issue #34, hardened #37) ---
+// Issue #37: capture-run must verify a transcript exists on disk before
+// linking it — the CLI can advertise `agent_transcript_path` for a subagent
+// whose transcript was never written, and blindly trusting it poisons the
+// manifest (2026-07-06 incident).
 
-test("SubagentStop payload with both fields links the agent transcript, not the parent's", () => {
+function tmpFile(dir: string, name: string): string {
+  const p = join(dir, name);
+  writeFileSync(p, "{}\n", "utf8");
+  return p;
+}
+
+test("SubagentStop payload with an existing agent_transcript_path links it, not the parent's", () => {
+  const dir = mkdtempSync(join(tmpdir(), "run-eval-capture-"));
+  const agentPath = tmpFile(dir, "agent-abc123.jsonl");
+  const parentPath = tmpFile(dir, "session.jsonl");
   const payload: HookPayload = {
     hook_event_name: "SubagentStop",
-    transcript_path: "/parent/session.jsonl",
-    agent_transcript_path: "/parent/subagents/agent-abc123.jsonl",
+    transcript_path: parentPath,
+    agent_transcript_path: agentPath,
   };
-  expect(pickTranscriptPath(payload)).toBe("/parent/subagents/agent-abc123.jsonl");
+  expect(pickTranscriptPath(payload)).toBe(agentPath);
 });
 
-test("Stop payload with only transcript_path falls back to it", () => {
+test("agent_transcript_path does not exist on disk but transcript_path does → falls back to transcript_path", () => {
+  const dir = mkdtempSync(join(tmpdir(), "run-eval-capture-"));
+  const parentPath = tmpFile(dir, "session.jsonl");
+  const phantomAgentPath = join(dir, "subagents", "agent-abc123.jsonl"); // never written
+  const payload: HookPayload = {
+    hook_event_name: "SubagentStop",
+    transcript_path: parentPath,
+    agent_transcript_path: phantomAgentPath,
+  };
+  expect(existsSync(phantomAgentPath)).toBe(false);
+  expect(pickTranscriptPath(payload)).toBe(parentPath);
+});
+
+test("neither transcript path exists on disk → undefined (caller skips, no manifest entry)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "run-eval-capture-"));
+  const payload: HookPayload = {
+    hook_event_name: "SubagentStop",
+    transcript_path: join(dir, "session.jsonl"),
+    agent_transcript_path: join(dir, "subagents", "agent-abc123.jsonl"),
+  };
+  expect(pickTranscriptPath(payload)).toBeUndefined();
+});
+
+test("Stop payload with only an existing transcript_path links it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "run-eval-capture-"));
+  const parentPath = tmpFile(dir, "session.jsonl");
   const payload: HookPayload = {
     hook_event_name: "Stop",
-    transcript_path: "/parent/session.jsonl",
+    transcript_path: parentPath,
   };
-  expect(pickTranscriptPath(payload)).toBe("/parent/session.jsonl");
+  expect(pickTranscriptPath(payload)).toBe(parentPath);
 });
 
 test("payload with neither field yields undefined (caller skips)", () => {
@@ -30,16 +68,15 @@ test("payload with neither field yields undefined (caller skips)", () => {
   expect(pickTranscriptPath(payload)).toBeUndefined();
 });
 
-test("empty-string agent_transcript_path is present (not nullish) so it wins over transcript_path", () => {
-  // `??` only falls back on null/undefined, so "" short-circuits the fallback.
-  // The caller's `if (!transcriptPath)` guard in main() still treats "" as
-  // absent, so this still ends up skipping — see the end-to-end test below.
+test("empty-string agent_transcript_path is not an existing file, so an existing transcript_path wins", () => {
+  const dir = mkdtempSync(join(tmpdir(), "run-eval-capture-"));
+  const parentPath = tmpFile(dir, "session.jsonl");
   const payload: HookPayload = {
     hook_event_name: "SubagentStop",
-    transcript_path: "/parent/session.jsonl",
+    transcript_path: parentPath,
     agent_transcript_path: "",
   };
-  expect(pickTranscriptPath(payload)).toBe("");
+  expect(pickTranscriptPath(payload)).toBe(parentPath);
 });
 
 // --- End-to-end: guard against a silently no-op hook (issue #34 highest risk) ---
@@ -79,5 +116,46 @@ test("end-to-end: main() runs via `bun run`, skipping on a neither-field payload
   // at all (bun would just load the module and exit without running main()).
   expect(err).toContain("no transcript_path in payload; skipping");
   expect(code).toBe(0);
+  expect(existsSync(join(stateDir, "manifest.jsonl"))).toBe(false);
+});
+
+// --- Regression: 2026-07-06 incident (issue #37) ---
+//
+// Claude Code CLI fired SubagentStop for internal harness agents whose
+// advertised `agent_transcript_path` was never written to disk. capture-run
+// linked the phantom path into the manifest, poisoning it. It must instead
+// fall back to `transcript_path` when that exists on disk, and write nothing
+// when neither path exists — always exiting 0 (audit-only, never blocking).
+
+test("regression: phantom agent_transcript_path falls back to the real transcript_path, no phantom entry", async () => {
+  const stateDir = mkdtempSync(join(tmpdir(), "run-eval-capture-"));
+  const realParentPath = tmpFile(stateDir, "session.jsonl");
+  const phantomAgentPath = join(stateDir, "subagents", "agent-phantom.jsonl"); // never written
+  const { err, code } = await runCapture(
+    {
+      hook_event_name: "SubagentStop",
+      transcript_path: realParentPath,
+      agent_transcript_path: phantomAgentPath,
+    },
+    stateDir,
+  );
+  expect(code).toBe(0);
+  // No `gh pr view` in this sandbox → still skips before appendRun, but must
+  // never reference the phantom path as the chosen transcript.
+  expect(err).not.toContain(phantomAgentPath);
+});
+
+test("regression: neither transcript path exists on disk → health line logged, no manifest entry, exit 0", async () => {
+  const stateDir = mkdtempSync(join(tmpdir(), "run-eval-capture-"));
+  const { err, code } = await runCapture(
+    {
+      hook_event_name: "SubagentStop",
+      transcript_path: join(stateDir, "session.jsonl"),
+      agent_transcript_path: join(stateDir, "subagents", "agent-phantom.jsonl"),
+    },
+    stateDir,
+  );
+  expect(code).toBe(0);
+  expect(err).toContain("skipping");
   expect(existsSync(join(stateDir, "manifest.jsonl"))).toBe(false);
 });
