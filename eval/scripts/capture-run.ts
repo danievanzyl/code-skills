@@ -13,6 +13,7 @@
  * It is a linker, never a collector: it records WHERE the transcript is, it does
  * not parse or copy it. It must never block the agent — it always exits 0.
  */
+import { existsSync } from "node:fs";
 import { appendRun, type RunEntry, type AgentRole } from "../src/manifest";
 
 export interface HookPayload {
@@ -21,14 +22,49 @@ export interface HookPayload {
   session_id?: string;
   cwd?: string;
   hook_event_name?: string;
+  /** SubagentStop only — which agent finished (e.g. "code-reviewer",
+   * "agentic-platform:afk-task-runner"). Absent on Stop payloads. */
+  agent_type?: string;
 }
 
 // SubagentStop payloads carry both `transcript_path` (the parent session's
 // transcript) and `agent_transcript_path` (the subagent's own transcript).
 // Prefer the agent's transcript so the Evaluator scores the right Trajectory.
 // Stop payloads (headless afk.sh, no parent) carry only `transcript_path`.
-export function pickTranscriptPath(payload: HookPayload): string | undefined {
-  return payload.agent_transcript_path ?? payload.transcript_path;
+//
+// The CLI can advertise an `agent_transcript_path` that was never written to
+// disk (e.g. internal harness agents on SubagentStop — 2026-07-06 incident).
+// Only link a path that actually exists, falling back to `transcript_path`,
+// else giving up — never link a phantom path into the manifest (issue #37).
+export function pickTranscriptPath(
+  payload: HookPayload,
+  exists: (path: string) => boolean = existsSync,
+): string | undefined {
+  const { agent_transcript_path, transcript_path } = payload;
+  if (agent_transcript_path && exists(agent_transcript_path)) {
+    return agent_transcript_path;
+  }
+  if (transcript_path && exists(transcript_path)) {
+    return transcript_path;
+  }
+  return undefined;
+}
+
+// 2026-07-06 incident #2: a phantom SubagentStop event ran BOTH matcher groups
+// (afk-task-runner and code-reviewer) despite mutually-exclusive matchers,
+// writing the same trajectory to the manifest as role=runner AND
+// role=reviewer 40ms apart. The payload's agent_type is the CLI's own
+// declaration of which agent actually finished — gate on it so a
+// matcher-bypass (blank/internal agent_type) can never corrupt role
+// attribution. Stop payloads carry no agent_type and are unaffected
+// (headless afk.sh has no parent, always runner — issue #39).
+const RUNNER_AGENT_TYPES = ["afk-task-runner", "agentic-platform:afk-task-runner"];
+const REVIEWER_AGENT_TYPES = ["code-reviewer", "agentic-platform:code-reviewer"];
+
+export function agentTypeAllowsRole(payload: HookPayload, role: AgentRole): boolean {
+  if (payload.hook_event_name !== "SubagentStop") return true;
+  const allowed = role === "reviewer" ? REVIEWER_AGENT_TYPES : RUNNER_AGENT_TYPES;
+  return allowed.includes(payload.agent_type ?? "");
 }
 
 async function ghPrInfo(cwd: string): Promise<{ pr: number; sha?: string } | null> {
@@ -74,7 +110,23 @@ async function main(): Promise<void> {
   const cwd = payload.cwd ?? process.cwd();
   const transcriptPath = pickTranscriptPath(payload);
   if (!transcriptPath) {
-    process.stderr.write("run-eval/capture: no transcript_path in payload; skipping\n");
+    if (payload.agent_transcript_path || payload.transcript_path) {
+      process.stderr.write(
+        "run-eval/capture: no transcript file exists on disk " +
+          `(agent_transcript_path=${payload.agent_transcript_path ?? "none"}, ` +
+          `transcript_path=${payload.transcript_path ?? "none"}); skipping\n`,
+      );
+    } else {
+      process.stderr.write("run-eval/capture: no transcript_path in payload; skipping\n");
+    }
+    return;
+  }
+
+  if (!agentTypeAllowsRole(payload, role)) {
+    process.stderr.write(
+      `run-eval/capture: SubagentStop agent_type "${payload.agent_type ?? "none"}" ` +
+        `does not match role=${role}; refusing to write manifest entry, skipping\n`,
+    );
     return;
   }
 
@@ -91,6 +143,7 @@ async function main(): Promise<void> {
     runId: payload.session_id,
     event: payload.hook_event_name,
     role,
+    agentType: payload.agent_type,
     ts: new Date().toISOString(),
   };
   appendRun(entry);

@@ -19,6 +19,12 @@ export interface RunEntry {
    * Absent = "runner" for back-compat (legacy capture hook entries).
    */
   role?: AgentRole;
+  /**
+   * Raw `agent_type` from the hook payload (SubagentStop only; absent on Stop).
+   * Recorded for audit — durable instrumentation of what the CLI actually
+   * advertised, and the input to capture-run's role-attribution gate (#39).
+   */
+  agentType?: string;
   /** ISO timestamp the entry was written. */
   ts: string;
 }
@@ -73,4 +79,25 @@ export function latestRunForPrByRole(
   const all = runsForPr(pr, path);
   const filtered = all.filter((e) => (e.role ?? "runner") === role);
   return filtered.length ? filtered[filtered.length - 1] : null;
+}
+
+/**
+ * Latest entry for a PR filtered by agent role, WHOSE transcriptPath exists
+ * on disk. Walks back from the newest entry per role, skipping phantom paths
+ * (e.g. a SubagentStop advertised a transcript that was never written —
+ * 2026-07-06 incident, issue #38). Returns null when no entry for that role
+ * has an existing file.
+ */
+export function latestExistingRunForPrByRole(
+  pr: number,
+  role: AgentRole,
+  path: string = defaultManifestPath(),
+  exists: (path: string) => boolean = existsSync,
+): RunEntry | null {
+  const all = runsForPr(pr, path);
+  const filtered = all.filter((e) => (e.role ?? "runner") === role);
+  for (let i = filtered.length - 1; i >= 0; i--) {
+    if (exists(filtered[i].transcriptPath)) return filtered[i];
+  }
+  return null;
 }
