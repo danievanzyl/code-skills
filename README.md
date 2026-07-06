@@ -69,7 +69,16 @@ carries a hidden `.vendored-from` marker recording its source.
 - **Automation**: `.github/workflows/sync-skills.yml` runs the sync weekly (and on demand via
   *Run workflow*), opening/updating a single `chore/sync-skills` PR. Merging it cuts a release.
 
-Current provider: [`mattpocock/skills`](https://github.com/mattpocock/skills) (MIT).
+Current providers:
+
+- [`mattpocock/skills`](https://github.com/mattpocock/skills) (MIT)
+- [`ogulcancelik/herdr`](https://github.com/ogulcancelik/herdr) (AGPL-3.0-or-later)
+
+A vendored skill keeps its **own** upstream license (recorded in
+`scripts/skill-sources.json`, `vendor/<provider>/`, and — shipped with the skill —
+`skills/<name>/LICENSE`). This is distinct from the plugin's own MIT license in
+`plugin.json`, which does not relicense vendored content. `herdr` is AGPL-3.0-or-later;
+see [ADR 0003](docs/adr/0003-agpl-skill-in-mit-plugin.md).
 
 ## Credits
 
