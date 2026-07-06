@@ -1,7 +1,8 @@
 import { test, expect } from "bun:test";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { RunEntry } from "../src/manifest";
 import { pickTranscriptPath, type HookPayload } from "../scripts/capture-run";
 
 // --- SubagentStop/Stop transcript-path selection (issue #34, hardened #37) ---
@@ -93,19 +94,37 @@ interface CaptureResult {
   code: number;
 }
 
-function runCapture(payload: unknown, stateDir: string): Promise<CaptureResult> {
+function runCapture(
+  payload: unknown,
+  stateDir: string,
+  args: string[] = [],
+  extraEnv: Record<string, string> = {},
+): Promise<CaptureResult> {
   const scriptPath = join(import.meta.dir, "../scripts/capture-run.ts");
-  const proc = Bun.spawn(["bun", "run", scriptPath], {
+  const proc = Bun.spawn(["bun", "run", scriptPath, ...args], {
     stdin: new Blob([JSON.stringify(payload)]),
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, RUN_EVAL_STATE_DIR: stateDir },
+    env: { ...process.env, RUN_EVAL_STATE_DIR: stateDir, ...extraEnv },
   });
   return Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
     proc.exited,
   ]).then(([out, err, code]) => ({ out, err, code }));
+}
+
+/** Writes a fake `gh` executable that answers `gh pr view --json ...` and
+ * prepends its directory to PATH, so ghPrInfo() succeeds without a real repo. */
+function fakeGhOnPath(dir: string, pr: number, sha: string): Record<string, string> {
+  const ghPath = join(dir, "gh");
+  writeFileSync(
+    ghPath,
+    `#!/usr/bin/env bash\necho '{"number": ${pr}, "headRefOid": "${sha}"}'\n`,
+    "utf8",
+  );
+  chmodSync(ghPath, 0o755);
+  return { PATH: `${dir}:${process.env.PATH ?? ""}` };
 }
 
 test("end-to-end: main() runs via `bun run`, skipping on a neither-field payload with no manifest write", async () => {
@@ -158,4 +177,78 @@ test("regression: neither transcript path exists on disk → health line logged,
   expect(code).toBe(0);
   expect(err).toContain("skipping");
   expect(existsSync(join(stateDir, "manifest.jsonl"))).toBe(false);
+});
+
+// --- Happy path: fallback link still preserves every other RunEntry field ---
+//
+// The existence check must only change *which* transcript gets linked, never
+// touch the rest of the entry — pr/sha come from `gh pr view`, runId/event
+// come straight from the payload, and role comes from the untouched --role
+// flag. Regression guard: a careless refactor of pickTranscriptPath's caller
+// could drop or shadow one of these when wiring in the new fallback branch.
+
+test("fallback-linked entry preserves pr, sha, runId, event, role and ts untouched", async () => {
+  const stateDir = mkdtempSync(join(tmpdir(), "run-eval-capture-"));
+  const binDir = mkdtempSync(join(tmpdir(), "run-eval-fakebin-"));
+  const parentPath = tmpFile(stateDir, "session.jsonl");
+  const phantomAgentPath = join(stateDir, "subagents", "agent-phantom.jsonl"); // never written
+  const extraEnv = fakeGhOnPath(binDir, 42, "deadbeefcafe");
+
+  const before = Date.now();
+  const { err, code } = await runCapture(
+    {
+      hook_event_name: "SubagentStop",
+      transcript_path: parentPath,
+      agent_transcript_path: phantomAgentPath,
+      session_id: "sess-123",
+    },
+    stateDir,
+    ["--role", "reviewer"],
+    extraEnv,
+  );
+  const after = Date.now();
+
+  expect(code).toBe(0);
+  expect(err).toContain(`linked PR #42 → ${parentPath} (role=reviewer)`);
+
+  const manifestPath = join(stateDir, "manifest.jsonl");
+  const lines = readFileSync(manifestPath, "utf8").trim().split("\n");
+  expect(lines).toHaveLength(1);
+  const entry = JSON.parse(lines[0]) as RunEntry;
+
+  expect(entry.pr).toBe(42);
+  expect(entry.sha).toBe("deadbeefcafe");
+  expect(entry.transcriptPath).toBe(parentPath); // fallback path, not the phantom
+  expect(entry.runId).toBe("sess-123");
+  expect(entry.event).toBe("SubagentStop");
+  expect(entry.role).toBe("reviewer"); // --role forwarded untouched
+  const tsMs = new Date(entry.ts).getTime();
+  expect(tsMs).toBeGreaterThanOrEqual(before);
+  expect(tsMs).toBeLessThanOrEqual(after);
+});
+
+test("fallback-linked entry defaults role to runner when --role is omitted", async () => {
+  const stateDir = mkdtempSync(join(tmpdir(), "run-eval-capture-"));
+  const binDir = mkdtempSync(join(tmpdir(), "run-eval-fakebin-"));
+  const parentPath = tmpFile(stateDir, "session.jsonl");
+  const phantomAgentPath = join(stateDir, "subagents", "agent-phantom.jsonl"); // never written
+  const extraEnv = fakeGhOnPath(binDir, 7, "abc123");
+
+  const { code } = await runCapture(
+    {
+      hook_event_name: "SubagentStop",
+      transcript_path: parentPath,
+      agent_transcript_path: phantomAgentPath,
+    },
+    stateDir,
+    [],
+    extraEnv,
+  );
+  expect(code).toBe(0);
+
+  const entry = JSON.parse(
+    readFileSync(join(stateDir, "manifest.jsonl"), "utf8").trim(),
+  ) as RunEntry;
+  expect(entry.role).toBe("runner");
+  expect(entry.transcriptPath).toBe(parentPath);
 });
