@@ -32,8 +32,8 @@ This skill drives `herdr` panes from inside a herdr-managed session. Check `HERD
 | gh account         | memory or `CLAUDE.md` (account routing per org); ask if unknown |
 | slug               | kebab-case of the issue title, short (≤ ~40 chars)              |
 | branch             | `afk/<N>-<slug>`                                                |
-| workspace id       | from `herdr workspace create --label "afk/<repo>#<N>"` (see Isolation); track it — Phase 2 teardown closes it |
-| worktree path      | wherever `herdr worktree create` places it (see Isolation)      |
+| workspace id       | `result.worktree.open_workspace_id` from `herdr worktree create` (see Isolation); track it — Phase 2 teardown closes it |
+| worktree path      | `result.worktree.path` from `herdr worktree create` — canonically `~/.herdr/worktrees/<repo>/<branch>` (see Isolation) |
 | report dir         | `~/.afk-herdr/<N>/`                                             |
 | runner model       | `model:` in `agents/afk-task-runner.md` (plugin agent def); pass to `claude --model` — see Model, never hardcode |
 | reviewer model     | `model:` in `agents/code-reviewer.md` (plugin agent def); pass to `claude --model` — see Model, never hardcode |
@@ -51,6 +51,7 @@ Same hard gate as `afk-issue`, plus the herdr-specific checks:
 - [ ] Base branch is **on origin**: `main` is a given; for any other base verify `git ls-remote --exit-code --heads origin <base>`.
 - [ ] Correct **gh account** active: `gh auth switch -u <account>`.
 - [ ] `~/.afk-herdr/<N>/` doesn't already hold a report from a stale prior run — if it does, confirm with the human before overwriting (a leftover `done` report could make you skip a step you actually need to re-run).
+- [ ] **Workspace-trust ancestor is accepted** (see "Workspace trust" below): `~/.herdr/worktrees/` (or an ancestor of where the worktree will land) has `hasTrustDialogAccepted: true` under `.projects["<path>"]` in `~/.claude.json`. If not → **STOP**, do not proceed to Isolation — instruct the human once: `cd ~/.herdr/worktrees && claude`, accept the trust dialog, exit. Do not mutate `~/.claude.json` yourself.
 
 `CODING_STANDARDS.md` is **soft** — the reviewer applies it if present, else general standards. Its absence is not a preflight failure.
 
@@ -58,23 +59,37 @@ Same hard gate as `afk-issue`, plus the herdr-specific checks:
 
 **Dedicated workspace** (Orchestrator-created, `afk/<repo>#<N>`) → **one labeled tab** `issue #N` → **two panes** in sequence (Runner first, then Reviewer), pane-labeled `runner` / `reviewer` → **one shared worktree** on `afk/<N>-<slug>`. The workspace is owned by the Orchestrator so teardown closes it wholesale (Teardown, below) without ever touching the human's own panes; single-issue is the N=1 case of the fan-in structure (one workspace, tab-per-issue). Two distinct **pane agents** are required even though they never run concurrently — forced by per-role eval: one Claude Code session = one transcript, so a reused pane would blend the Runner Trajectory and Reviewer Trajectory into one.
 
-## Isolation — orchestrator-owned workspace + shared worktree
+## Isolation — worktree-first (do not pre-create a workspace)
 
-You (the Orchestrator) own the **workspace** and the worktree lifecycle, not the agents:
+You (the Orchestrator) own the workspace and worktree lifecycle, not the agents. **Worktree-first, not workspace-first** — live-verified against herdr 0.7.1: `herdr worktree create` **ignores `--workspace`** for placement (it always spawns its own workspace, making a pre-made one dead weight), and an empty workspace with no running agent is **auto-reaped as idle** before an agent can be pinned to it. A pre-made workspace is therefore both useless and actively dangerous (it can die mid-run). The verified sequence:
 
-1. **Create the dedicated workspace first:** `herdr workspace create --label "afk/<repo>#<N>" --no-focus --json` → keep `result.workspace` (its id). Everything below is scoped to this workspace via `--workspace <id>`. `--no-focus` so you don't yank the human off their current context; the explicit `--label` avoids colliding with herdr's default repo-name labelling (two AFK runs on one repo would otherwise share a name). Track this id — Phase 2 teardown closes the workspace by it.
-2. **Create the shared worktree in that workspace:** prefer `herdr worktree create --workspace <workspace-id> --branch afk/<N>-<slug> --base <base> --label "issue #N" --json` over raw `git worktree add` — it is pane-aware (see `docs/herdr-binary-notes.md`). Parse the JSON result for the worktree path and any tab/pane it opened; re-resolve current ids via `herdr tab list --workspace <workspace-id>` / `herdr pane list` if the response doesn't hand you one directly (ids compact — never assume an id from an earlier call is still valid).
-3. If `herdr worktree create` doesn't already give you a labeled tab, create/rename one in the workspace: `herdr tab create --workspace <workspace-id> --label "issue #N"` (or `herdr tab rename <tab-id> "issue #N"`).
-4. Open both panes **in that worktree** via `--cwd <worktree-path>` (and `--tab <tab-id>` in the dedicated workspace) on whatever agent-start call you use (see below) — never let the Runner or Reviewer create their own worktree.
+1. **Resolve all launch flags and write both prompt files first**, before touching herdr at all — role models (see "Model"), permission flags (see "Permissions"), plugin root, and the full Runner/Reviewer prompt text, saved to files. Do this *before* step 2 so `worktree create → agent start` is seconds, not minutes: idle-reaping killed a workspace mid-run when prompt composition took several minutes after workspace creation.
+2. **Create the worktree** (this also creates its own workspace, tab, and root pane): `herdr worktree create --cwd <target-repo> --branch afk/<N>-<slug> --base <base> --label "issue #N" --json`. **`--cwd <target-repo>` is mandatory** — your own Orchestrator cwd may be a different repo, and an omitted/wrong `--cwd` mis-anchors the worktree (verified: cost a recreate in the live shakedown). Parse the single JSON result for everything you need: `result.worktree.path` (worktree path), `result.worktree.open_workspace_id` (workspace id), `result.tab.tab_id` (tab id), `result.root_pane.pane_id` (the spare root pane — closed in Agent control, below).
+3. **Adopt, don't recreate, the workspace:** `herdr workspace rename <workspace-id> "afk/<repo>#<N>"`. Do **not** call `herdr workspace create` separately — the workspace from step 2 *is* the dedicated workspace; renaming it is the whole "creation" step.
+4. **Start the Runner immediately** (Agent control, below) so the workspace is never idle-empty between steps 2 and the Runner's first tool call.
 5. Runner and Reviewer **share** this one worktree. The Reviewer therefore **skips `gh pr checkout` entirely** (kills `feature-branch-fan-in` gotcha 3 by construction) — it inherits the Runner's live tree. Before reviewing, the Reviewer must assert a **clean tree** (`git status --porcelain` empty) and **`HEAD == origin PR head`** (`git rev-parse HEAD` == `gh pr view <pr> --json headRefOid -q .headRefOid`), since it's inheriting a tree it didn't check out itself.
 
-**Open item (non-blocking):** `herdr worktree create`'s own path layout may not match the `git-worktree` skill's `<repo>/<branch>` sibling-directory convention. Use whatever `herdr worktree create` gives you and note the actual path in your report to the human rather than assuming either layout.
+Worktree layout is `~/.herdr/worktrees/<repo>/<branch>` — this *is* a de-facto `<repo>/<branch>` sibling layout, matching the `git-worktree` skill's convention closely enough; adopt it as canonical and stop hedging on it.
+
+## Workspace trust — dialog preflight + defensive fallback
+
+Every AFK pane launches `claude` in a **fresh, untrusted worktree path**, so claude shows the "Do you trust the files in this folder?" dialog **before** the REPL. `-p` would skip it but kills interactivity, which this skill needs. Live-verified: text sent to the pane before the dialog is accepted is **silently swallowed** — a naive Runner/Reviewer launch hangs here forever. There is **no settings key / env var / non-dangerous flag** that persists trust (checked against claude CLI 2.1.204) — but trust is **ancestor-based**: a fresh child session under a trusted parent directory shows no dialog at all. Trust state lives at `~/.claude.json` → `.projects["<path>"].hasTrustDialogAccepted`; an untrusted child path with `hasTrustDialogAccepted: false` still inherits a trusted ancestor's trust.
+
+- **Preflight (hard gate, see Preflight above):** before creating anything, verify `~/.herdr/worktrees/` (or an ancestor of where the worktree will land) already has `hasTrustDialogAccepted: true` in `~/.claude.json`. If not, **stop** and instruct the human once: `cd ~/.herdr/worktrees && claude`, accept the dialog, exit. Never mutate `~/.claude.json` yourself.
+- **Defensive per-run fallback (belt-and-suspenders):** immediately after each `agent start`, before waiting for readiness, check `herdr pane read <pane-id>` for the trust prompt (match `trust this folder`). If present: `herdr pane send-keys <pane-id> Enter` (option 1, "Yes, I trust", is pre-selected — verified Enter accepts it), then proceed to the readiness wait as normal. This should never fire once the preflight ancestor is trusted, but guarantees no silent hang if it does.
 
 ## Agent control — prefer the `herdr agent` API
 
-Prefer `herdr agent start <name> --cwd <worktree> --tab <tab-id> --split down -- claude <launch flags>` (+ `agent send`, `agent wait --status`, `agent read`, `agent rename`) over raw `pane split` + `pane run "claude"`. The `agent` API targets by stable name (`runner` / `reviewer`) instead of a pane id that can compact, and herdr already tracks each pane agent's session/transcript metadata. `<launch flags>` = the role's pinned `--model` (see "Model") **plus** the permission flags (see "Permissions") — resolved per launch, never hardcoded. **Never launch a bare `-- claude`** (silently runs the interactive default model *and* full, unguarded permissions/tools — both diverge from the agent def).
+Prefer `herdr agent start <name> --workspace <workspace-id> --tab <tab-id> --cwd <worktree> [--split right|down] -- claude <launch flags>` (+ `agent send`, `agent wait --status`, `agent read`, `agent rename`) over raw `pane split` + `pane run "claude"`. The `agent` API targets by stable name (`runner` / `reviewer`) instead of a pane id that can compact, and herdr already tracks each pane agent's session/transcript metadata. `<launch flags>` = the role's pinned `--model` (see "Model") **plus** the permission flags (see "Permissions") — resolved per launch, never hardcoded. **Never launch a bare `-- claude`** (silently runs the interactive default model *and* full, unguarded permissions/tools — both diverge from the agent def).
 
-**Names resolve for `agent` subcommands only.** `agent get/read/send/rename/wait/focus/attach` all accept the stable name (`runner`/`reviewer`). `pane read`, `wait output`, and `wait agent-status` do **not** — they require the literal pane id, and error `pane_not_found` on a bare agent name. Capture the pane id from `agent start`'s JSON response (`result.agent.pane_id`) — or re-resolve it later via `herdr agent get <name>` → `.agent.pane_id` — and use that id anywhere you'd otherwise pass the name to `pane`/`wait` commands.
+**`--cwd <worktree>` is mandatory on every `agent start` call, no exceptions.** Live-verified: without it, a pane lands in a default directory (e.g. `~/…/ritdu`), **not** the worktree — and a `--split` pane does **not** inherit its origin pane's cwd, so it needs its own explicit `--cwd` too.
+
+**`herdr agent start` always creates its own new pane**, even without `--split` — it never reuses an existing one (live-verified). `herdr worktree create` (Isolation, above) leaves behind a spare idle root pane, so the topology needs one cleanup step to end up with exactly one pane per role:
+
+- **Runner:** `herdr agent start runner --workspace <workspace-id> --tab <tab-id> --cwd <worktree> -- claude <launch flags>`, then **`herdr pane close <root-pane-id>`** (the spare root pane from `worktree create`). Verified: `herdr agent get runner` still resolves correctly after the root pane is closed — one clean pane, name API intact.
+- **Reviewer:** `herdr agent start reviewer --workspace <workspace-id> --tab <tab-id> --split right --cwd <worktree> -- claude <launch flags>`. **`--split right`** (vertical divider, side-by-side with the Runner's pane) — not `--split down`.
+
+**Names resolve for `agent` subcommands only.** `agent get/read/send/rename/wait/focus/attach` all accept the stable name (`runner`/`reviewer`). `pane read`, `pane send-keys`, `wait output`, and `wait agent-status` do **not** — they require the literal pane id, and error `pane_not_found` on a bare agent name. Capture the pane id from `agent start`'s JSON response (`result.agent.pane_id`) — or re-resolve it later via `herdr agent get <name>` → `.agent.pane_id` — and use that id anywhere you'd otherwise pass the name to `pane`/`wait` commands.
 
 ### Model — pin per role from the agent defs, never bare `claude`
 
@@ -94,61 +109,69 @@ A pane agent is **attended-but-idle**: a human can watch and unblock it, but mus
 
 > The guard hook covers **secret-path** reads/writes only (`.aws`, `.ssh`, `.env`, keys, `.tfstate`) — it is *not* a destructive-command guard. Protection against `rm -rf`/force-push comes from `auto`'s classifier, which is why `auto` (not `dontAsk`, which has no classifier) is the mode.
 
-1. `herdr agent start runner --cwd <worktree> --tab <tab-id> --split down -- claude --model <runner model> --permission-mode auto --disallowedTools "WebSearch WebFetch mcp__*" --plugin-dir <plugin-root>` → starts the Runner pane agent. Parse `result.agent.pane_id` from the response and keep it (needed for `wait output`/`pane read` below). Rename/confirm its pane label is `runner` (`herdr pane rename <pane-id> runner` if `agent start` didn't already label it).
-2. Once the pane agent is ready for input (wait for a prompt, e.g. `herdr wait output <runner-pane-id> --match ">" --timeout 15000`, mirroring the herdr skill's "spawn a new agent" recipe), `herdr agent send runner "<runner prompt — see below>"`.
-3. After the Runner reports done (see Completion detection), start the Reviewer the same way, in the **same tab**, **same worktree**, with the **same permission flags**: `herdr agent start reviewer --cwd <worktree> --tab <tab-id> --split down -- claude --model <reviewer model> --permission-mode auto --disallowedTools "WebSearch WebFetch mcp__*" --plugin-dir <plugin-root>` (capture its `pane_id` too), then `herdr agent send reviewer "<reviewer prompt — see below>"`.
+1. `herdr agent start runner --workspace <workspace-id> --tab <tab-id> --cwd <worktree> -- claude --model <runner model> --permission-mode auto --disallowedTools "WebSearch WebFetch mcp__*" --plugin-dir <plugin-root>` → starts the Runner pane agent. Parse `result.agent.pane_id` and keep it (needed for `pane`/`wait` commands below). Then `herdr pane close <root-pane-id>` (Topology cleanup, above).
+2. **Trust check** (defensive fallback, above): `herdr pane read <runner-pane-id>`; if it shows the trust prompt, `herdr pane send-keys <runner-pane-id> Enter`.
+3. **Readiness:** `herdr agent wait runner --status idle --timeout 30000` — live-verified this correctly detects the booted claude session with no glyph-guessing (the old `wait output --match ">"` readiness check is wrong: the real prompt glyph is `❯`, not `>`, so it never matched).
+4. **Send:** `herdr agent send runner "$(cat <runner-promptfile>)"` — verified `agent send` uses bracketed paste and lands a full multi-line prompt intact with no early submit. This is why the prompt is kept in a file (per Isolation step 1) rather than composed inline — a `pane run` text+Enter approach submits per newline and is wrong here.
+5. **Submit:** `herdr pane send-keys <runner-pane-id> Enter`, then confirm `herdr agent get runner` transitions to `agent_status: working` and the input area clears.
+6. **Verify-and-resend:** `herdr pane read <runner-pane-id>` the input area; if the prompt text is still sitting unsent, re-send `herdr pane send-keys <runner-pane-id> Enter` (bounded retries, e.g. 3, with a short pause between) — encodes the "Enter didn't land" recovery done by hand in the live shakedown.
+7. After the Runner reports done (see Completion detection), start the Reviewer the same way, in the **same tab**, **same worktree**, with the **same permission flags**: `herdr agent start reviewer --workspace <workspace-id> --tab <tab-id> --split right --cwd <worktree> -- claude --model <reviewer model> --permission-mode auto --disallowedTools "WebSearch WebFetch mcp__*" --plugin-dir <plugin-root>` (capture its `pane_id` too — no root pane to close this time, only the Runner's `worktree create` leaves one), then repeat steps 2–6 for the Reviewer (`herdr agent wait reviewer --status idle`, `herdr agent send reviewer "$(cat <reviewer-promptfile>)"`, `herdr pane send-keys <reviewer-pane-id> Enter`, verify-and-resend).
 
-## Data channel — report file + sentinel, not terminal-scraping
+## Data channel — report file is the payload, sentinel is a human cue only
 
-A pane has no return value, and scraping structured data out of a terminal is fragile. Two independent channels, both told to the agent in its prompt:
+A pane has no return value, and scraping structured data out of a terminal is fragile. Two channels, both told to the agent in its prompt, are **not peers** — one is the machine gate, the other is for the human's eyes only:
 
-- **Payload — report file.** Each agent writes a structured report to an Orchestrator-designated path **outside the worktree**: `~/.afk-herdr/<N>/runner-report.json` / `~/.afk-herdr/<N>/reviewer-report.json`, shape `{pr, branch, transcript_path, test_result, verdict}`. Outside the tree so it never dirties the Runner's working tree or breaks the Reviewer's clean-tree check. The agent **self-reports its own `transcript_path`** — Claude Code names a session's transcript directory after the slugified cwd (`~/.claude/projects/<cwd with "/" → "-">/<session-id>.jsonl`), so the newest `.jsonl` by mtime under that directory at the moment it writes the report is its own. `pane read` / `agent read` are a human observability aid, **never** the data channel.
-- **Signal — sentinel.** Each agent's final terminal action prints `<<<AFK_WORK_DONE>>>` on success or `<<<AFK_WORK_BLOCKED>>>` on HITL. Rare token, chosen to avoid false-matching agent prose and absent from the launching command.
+- **Payload — report file (the machine gate).** Each agent writes a structured report to an Orchestrator-designated path **outside the worktree**: `~/.afk-herdr/<N>/runner-report.json` / `~/.afk-herdr/<N>/reviewer-report.json`, shape `{pr, branch, transcript_path, test_result, verdict}`. Outside the tree so it never dirties the Runner's working tree or breaks the Reviewer's clean-tree check. The agent **self-reports its own `transcript_path`** — Claude Code names a session's transcript directory after the slugified cwd (`~/.claude/projects/<cwd with "/" → "-">/<session-id>.jsonl`), so the newest `.jsonl` by mtime under that directory at the moment it writes the report is its own. `pane read` / `agent read` are a human observability aid, **never** the data channel.
+- **Sentinel — human-readable cue only, NOT a machine gate.** Each agent's final terminal action prints `<<<AFK_WORK_DONE>>>` on success or `<<<AFK_WORK_BLOCKED>>>` on HITL. Live-verified this is **unsafe as a `wait output --match` target**: the prompt text you send the agent *contains this literal token* (it's part of the instruction telling the agent what to print), so it sits in the pane's scrollback the moment you send it — and `wait output` then matches the **prompt's own echo** instantly, firing a false DONE before the agent has done anything. Never gate on it; treat it as a label for a human glancing at the pane.
 
-## Completion detection — sentinel primary, `agent_status` backstop, watch both
+## Completion detection — report-file primary, `agent get` for blocked, one canonical monitor
 
-- **Primary gate:** `herdr wait output <pane-id> --match "<<<AFK_WORK_(DONE|BLOCKED)>>>" --regex --timeout <T>` — reliable because it's a deterministic emitted string. `wait output` takes the literal pane id, not the agent name (see "Names resolve for `agent` subcommands only" above) — use the `pane_id` you captured from `agent start`.
-- **Backstop:** `herdr agent get <name>` / `herdr pane list` for `agent_status ∈ {done, blocked}`. `herdr wait agent-status` alone is flaky in practice (timed out in live testing even when the target state was reached) — demote it to corroboration, never the sole gate. (`agent get` accepts the name; `wait agent-status` needs the pane id, same split as `wait output`.)
-- Watch **both concurrently**, not sentinel-then-status: an agent can go `agent_status: blocked` mid-run (it asked a question) without ever printing the BLOCKED sentinel, and you want to catch that immediately, not after a full timeout. Since you're a sequential CLI-driven agent, "concurrently" means a short-timeout poll loop, not two real threads:
+- **Primary DONE gate: report-file existence.** Poll for `~/.afk-herdr/<N>/<role>-report.json` on disk. Immune to buffer echo, glyph differences, and clock skew — a plain filesystem check, not a terminal match. Once present, read `.verdict` from it.
+- **BLOCKED gate: `herdr agent get <name>` status.** A blocked agent is paused waiting on input and **has not written its report yet**, so file-existence can't catch a block — status is the only signal for it. This is accepted despite `agent get`/`wait agent-status`'s known flakiness (see ADR-0004) — there is no better signal. `herdr wait agent-status` alone stays demoted to corroboration only, never the sole gate (it timed out in live testing even when the target state was reached).
+- **`agent_status: idle` is ambiguous — never treat it as DONE.** Live-verified it fires at the workspace-trust dialog, between ordinary turns, *and* at done. Only report-file existence means done; `idle` alone means nothing about completion.
+- **Ship this one canonical monitor**, run via a single backgrounded Bash call, instead of authoring a bespoke poll script per run:
 
 ```bash
-# $NAME = agent name ("runner"/"reviewer"); $PANE_ID = its pane id, captured
-# from `agent start`'s result.agent.pane_id (or re-resolved via `agent get`).
+# $NAME   = agent name ("runner"/"reviewer")
+# $REPORT = ~/.afk-herdr/<N>/<role>-report.json for this agent
 while true; do
-  if herdr wait output "$PANE_ID" --match '<<<AFK_WORK_(DONE|BLOCKED)>>>' --regex --timeout 20000; then
-    break   # sentinel matched — inspect which one via `herdr pane read "$PANE_ID" --source recent-unwrapped --lines 10`
+  if [[ -f "$REPORT" ]]; then
+    echo "done: report file present at $REPORT"
+    break
   fi
   status=$(herdr agent get "$NAME" | jq -r '.agent_status // .result.agent_status // empty')
-  case "$status" in
-    blocked) : ;;   # HITL — handle below, then keep looping (never abandon the pane agent)
-    done) break ;;  # done with no sentinel — verify the report file next; missing report ⇒ failure
-  esac
+  if [[ "$status" == "blocked" ]]; then
+    echo "blocked: $NAME is waiting on human input"
+    # handle per HITL below, then keep looping — never abandon the pane agent;
+    # a report file can still appear later once the human unblocks it in-pane
+  fi
+  sleep 5
 done
 ```
 
-- `done` (via either channel) with **no report file at the expected path** is a **failure**, not a success — surface it, don't fabricate a result.
+- `done` (report file present) with a `.verdict` other than success, or a `blocked` status with **no report file ever appearing**, are both surfaced as-is — never fabricate a result. Sentinel text visible via `herdr pane read <pane-id>` is a cue you can mention to the human, nothing more.
 
 ## HITL / blocked handling
 
-On `<<<AFK_WORK_BLOCKED>>>` **or** `agent_status: blocked`:
+On the monitor loop (Completion detection, above) reporting `agent_status: blocked`:
 
 1. `herdr tab focus <tab-id>` (surface the live pane agent to the human).
 2. `herdr notification show "issue #N <role> blocked" --body "<reason from the pane>" --sound request`.
 3. Report the reason to the human.
-4. **Keep waiting** for `<<<AFK_WORK_DONE>>>` — the human unblocks in-pane and the pipeline resumes; do not tear anything down or abandon the pane agent on a block. Use a generous timeout with a re-notify loop (exact cadence is a non-blocking open item — start conservative, e.g. re-notify every few minutes of continued `blocked`, and tune from experience) so you never wait forever silently.
+4. **Keep waiting** (the monitor loop keeps polling for the report file) — the human unblocks in-pane and the pipeline resumes; do not tear anything down or abandon the pane agent on a block. Use a generous timeout with a re-notify loop (exact cadence is a non-blocking open item — start conservative, e.g. re-notify every few minutes of continued `blocked`, and tune from experience) so you never wait forever silently.
 
 ## Pipeline
 
-1. **Preflight** (above). Abort with a clear report if anything fails.
-2. **Create the dedicated workspace, then the shared worktree + tab** (Isolation, above): workspace `afk/<repo>#<N>`, branch `afk/<N>-<slug>` off `<base>`, tab labeled `issue #N`. Track the workspace id.
-3. **Start the Runner pane**, labeled `runner`, `--cwd` the shared worktree, with the model + permission flags (Agent control); send it the Runner prompt (template below).
-4. **Watch for completion** (sentinel + `agent_status` backstop, watch both). Handle any `blocked` per HITL — keep waiting, don't skip ahead.
+1. **Preflight** (above), including the workspace-trust ancestor check. Abort with a clear report if anything fails.
+2. **Resolve launch flags, write both prompt files, then create the worktree** (Isolation, above): `herdr worktree create --cwd <target-repo> --branch afk/<N>-<slug> --base <base> --label "issue #N" --json`, then `herdr workspace rename <workspace-id> "afk/<repo>#<N>"`. Track the workspace id, tab id, worktree path, and root pane id.
+3. **Start the Runner pane**, labeled `runner`, `--cwd` the shared worktree, with the model + permission flags (Agent control); close the spare root pane; run the trust check, readiness wait, send, submit, and verify-resend choreography (Agent control); this sends the Runner prompt (template below).
+4. **Watch for completion** via the canonical monitor (report-file primary, `agent get` for blocked). Handle any `blocked` per HITL — keep waiting, don't skip ahead.
 5. **On Runner done:** read `~/.afk-herdr/<N>/runner-report.json`; if missing, treat as failure and stop. Verify the PR it reports: `gh pr view <pr> --json baseRefName,headRefName` → base = `<base>`, head = the reported branch.
-6. **Score the Runner Trajectory:** `bun run eval/scripts/eval-pr.ts --pr <pr> --repo <owner/repo> --transcript <runner transcript_path> --publish` (advisory Scorecard #1 — no `--fail-on-gate`, matching the existing advisory-first rollout).
-7. **Start the Reviewer pane**, labeled `reviewer`, `--cwd` the **same** shared worktree (no `gh pr checkout`); send it the Reviewer prompt (template below), which first asserts clean tree + `HEAD == origin PR head`.
+6. **Score the Runner Trajectory:** bootstrap deps if needed (`[[ -d <plugin-root>/eval/node_modules ]] || ( cd <plugin-root>/eval && bun install )`), then `( cd <plugin-root>/eval && bun run scripts/eval-pr.ts --pr <pr> --repo <owner/repo> --transcript <runner transcript_path> --publish )` — run from `<plugin-root>/eval`, **not** the worktree (advisory Scorecard #1 — no `--fail-on-gate`, matching the existing advisory-first rollout).
+7. **Start the Reviewer pane**, labeled `reviewer`, `--split right`, `--cwd` the **same** shared worktree (no `gh pr checkout`); run the same trust/readiness/send/submit/verify-resend choreography; this sends the Reviewer prompt (template below), which first asserts clean tree + `HEAD == origin PR head`.
 8. **Watch for completion** the same way as step 4.
 9. **On Reviewer done:** read `~/.afk-herdr/<N>/reviewer-report.json`; if missing, treat as failure and stop.
-10. **Score the full Trajectory:** `bun run eval/scripts/eval-pr.ts --pr <pr> --repo <owner/repo> --transcript <runner transcript_path> --reviewer-transcript <reviewer transcript_path> --publish` (Scorecard #2 — now carries the Reviewer's efficiency/security findings alongside the Runner's).
+10. **Score the full Trajectory:** same bootstrap guard as step 6, then `( cd <plugin-root>/eval && bun run scripts/eval-pr.ts --pr <pr> --repo <owner/repo> --transcript <runner transcript_path> --reviewer-transcript <reviewer transcript_path> --publish )` (Scorecard #2 — now carries the Reviewer's efficiency/security findings alongside the Runner's).
 11. **Report** to the human: PR URL, Reviewer verdict (APPROVE / CHANGES MADE / BLOCKED-needs-human), final test result, both Scorecards' gate state, worktree path, tab id.
 12. **Teardown Phase 1** (automatic — see below).
 
@@ -172,12 +195,19 @@ Reuse `afk-issue`'s [`afk-task-runner` prompt template](../afk-issue/SKILL.md#af
 
 The Evaluator (`eval/scripts/eval-pr.ts`) is a read-only CLI, not a spawnable agent. The existing `code-reviewer` `SubagentStop` → `run-evaluator.sh` wiring is **dead here** for the same reason the push hook is dead: pane-hosted agents are top-level processes, so that hook never fires in the Orchestrator. You therefore invoke `eval-pr.ts` yourself, explicitly, per role (pipeline steps 6 and 10) — always passing `--transcript`/`--reviewer-transcript` explicitly from the self-reported report files, never relying on manifest auto-resolution (which tags top-level `Stop` events `role=runner` by default and would mis-tag the Reviewer's own `Stop`). Top-level `Stop` → `capture-run.sh` still fires per-pane and harmlessly links PR→transcript in the manifest; it's inert here since you never read the manifest for control flow.
 
+**Deps bootstrap — mirror the hook's guard, don't assume `node_modules` exists.** The plugin ships `eval/` source without `node_modules` installed. Calling `eval-pr.ts` directly (unlike the `run-evaluator.sh` hook path) bypasses that hook's existing dependency guard, so both eval invocations (pipeline steps 6 and 10) must mirror it themselves, matching `hooks/run-evaluator.sh:57-62`:
+
+```bash
+[[ -d "<plugin-root>/eval/node_modules" ]] || ( cd "<plugin-root>/eval" && bun install )
+( cd "<plugin-root>/eval" && bun run scripts/eval-pr.ts --pr <pr> --repo <owner/repo> --transcript <runner transcript_path> [--reviewer-transcript <reviewer transcript_path>] --publish )
+```
+
+Run `eval-pr.ts` **from `<plugin-root>/eval`** (its `bun install`/dependency resolution is scoped there), never from the worktree.
+
 ## Teardown — auto Phase 1, explicit Phase 2
 
 - **Phase 1 (automatic, end of pipeline):** deliver the report, publish both Scorecards, **leave the PR open** for human merge, **leave the workspace (tab + panes) and worktree in place** for inspection of the completed transcripts.
-- **Phase 2 (explicit, only on the human's "done"/wrap-up):**
-  1. Close the whole workspace **by its tracked id**: `herdr workspace close <workspace-id>`. Because the workspace is Orchestrator-owned and dedicated, this reclaims its tabs + panes atomically — no per-tab tracking, and no risk of touching the human's own panes.
-  2. **Then** remove the worktree: `herdr worktree remove --workspace <workspace-id> --force` (or `git worktree remove --force <path>` + `git worktree prune` if you fell back to raw git). Order matters — a worktree can't be removed while a pane's cwd is still inside it, and closing the workspace first frees it. The branch is safe on origin; a human can still `git worktree add`/`gh pr checkout` it later.
+- **Phase 2 (explicit, only on the human's "done"/wrap-up):** a **single** command: `herdr worktree remove --workspace <workspace-id> --force`. Live-verified this one call removes the worktree **and** closes the workspace **and** reclaims its tabs + panes atomically (even with a pane's cwd still inside it) **and** prunes the git worktree — the branch is preserved on origin, so a human can still `git worktree add`/`gh pr checkout` it later. **Do not** split this into `workspace close` then `worktree remove --workspace <id>` — that ordering is circular: `worktree remove` is keyed by `--workspace <id>`, and that id no longer resolves once the workspace is already closed, forcing a raw-`git` fallback. Keep the raw-git fallback (`git worktree remove --force <path>` + `git worktree prune`) only for the now-unlikely case where the workspace id is already gone for some other reason.
 - Safety rules (non-negotiable): the Orchestrator only ever closes the **workspace it created** (by tracked id); never blanket-close "non-focused" panes; never close a workspace or pane you did not create; never assume ownership of the human's focused pane.
 
 ## Sub-agent nesting (deliberately preserved, not yet exercised)
@@ -188,7 +218,6 @@ Because the Runner and Reviewer are full Claude Code sessions, either can itself
 
 ## Open items (non-blocking, decide during implementation)
 
-- `herdr worktree create`'s path layout vs the `git-worktree` skill's `<repo>/<branch>` sibling-directory convention — pick whichever `herdr worktree create` actually gives you and report the real path; don't force one convention onto the other.
 - HITL keep-waiting timeout + re-notify cadence — start conservative and tune from experience; not fixed by this skill.
 
 ## When NOT to use this skill

@@ -21,6 +21,14 @@ herdr worktree open [--workspace ID | --cwd PATH] (--path PATH | --branch NAME) 
 herdr worktree remove --workspace ID [--force] [--json]
 ```
 
+## `herdr workspace list` rejects `--json` but still emits JSON
+
+Unlike `workspace create`/`get`, `worktree`, and `agent` (all of which accept
+`--json`), `herdr workspace list --json` prints a `usage:` error to stderr —
+yet its stdout is still JSON. Don't pass `--json` to `workspace list`; parse
+its plain stdout directly, or you'll hit spurious `jq` parse errors on the
+`usage:` line.
+
 ## `herdr pane rename`
 
 ```
