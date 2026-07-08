@@ -1,6 +1,6 @@
 ---
 name: afk-issue
-description: Implement ONE GitHub issue end-to-end with the afk-task-runner, then the code-reviewer, opening a PR (default base main, override with a branch). Orchestration glue for a single targeted issue — use when the user says "afk issue #N", "implement #N and review it", "run the afk runner on issue N", "build and review issue N", or wants one locked-design issue built + reviewed as a PR. For MULTIPLE issues into an integration branch, use feature-branch-fan-in instead.
+description: Implement ONE GitHub issue end-to-end with the afk-task-runner, then the code-reviewer, opening a PR (default base main, override with a branch). Orchestration glue for a single targeted issue — use when the user says "afk issue #N", "implement #N and review it", "run the afk runner on issue N", "build and review issue N", or wants one locked-design issue built + reviewed as a PR. For MULTIPLE issues into an integration branch, use feature-branch-fan-in instead. For herdr-pane observability + mid-run intervention on a single issue, use afk-issue-herdr instead.
 argument-hint: <issue-number> [base-branch]
 ---
 
@@ -103,5 +103,6 @@ Default: **leave the PR open for a human merge** (the PR-to-main is the review g
 ## When NOT to use this skill
 
 - **Multiple issues** → `feature-branch-fan-in` (integration branch + consolidated PR).
+- **Want herdr-pane observability/mid-run intervention** → `afk-issue-herdr` (same pipeline, herdr panes instead of in-process subagents).
 - **Design not locked** → `grill-with-docs` first.
 - **No issue yet** → `to-issues` first.

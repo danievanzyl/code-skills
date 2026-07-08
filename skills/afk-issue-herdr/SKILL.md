@@ -66,11 +66,13 @@ You (the Orchestrator) own the worktree lifecycle, not the agents:
 
 ## Agent control — prefer the `herdr agent` API
 
-Prefer `herdr agent start <name> --cwd <worktree> --tab <tab-id> --split down -- claude` (+ `agent send`, `agent wait --status`, `agent read`, `agent rename`, `agent release`) over raw `pane split` + `pane run "claude"`. The `agent` API targets by stable name (`runner` / `reviewer`) instead of a pane id that can compact, and herdr already tracks each agent's session/transcript metadata.
+Prefer `herdr agent start <name> --cwd <worktree> --tab <tab-id> --split down -- claude` (+ `agent send`, `agent wait --status`, `agent read`, `agent rename`) over raw `pane split` + `pane run "claude"`. The `agent` API targets by stable name (`runner` / `reviewer`) instead of a pane id that can compact, and herdr already tracks each agent's session/transcript metadata.
 
-1. `herdr agent start runner --cwd <worktree> --tab <tab-id> --split down -- claude` → starts the Runner's Claude Code session. Rename/confirm its pane label is `runner` (`herdr pane rename <pane-id> runner` if `agent start` didn't already label it).
-2. Once the session is ready for input (wait for a prompt, e.g. `herdr wait output runner --match ">" --timeout 15000`, mirroring the herdr skill's "spawn a new agent" recipe), `herdr agent send runner "<runner prompt — see below>"`.
-3. After the Runner reports done (see Completion detection), start the Reviewer the same way, in the **same tab**, **same worktree**: `herdr agent start reviewer --cwd <worktree> --tab <tab-id> --split down -- claude`, then `herdr agent send reviewer "<reviewer prompt — see below>"`.
+**Names resolve for `agent` subcommands only.** `agent get/read/send/rename/wait/focus/attach` all accept the stable name (`runner`/`reviewer`). `pane read`, `wait output`, and `wait agent-status` do **not** — they require the literal pane id, and error `pane_not_found` on a bare agent name. Capture the pane id from `agent start`'s JSON response (`result.agent.pane_id`) — or re-resolve it later via `herdr agent get <name>` → `.agent.pane_id` — and use that id anywhere you'd otherwise pass the name to `pane`/`wait` commands.
+
+1. `herdr agent start runner --cwd <worktree> --tab <tab-id> --split down -- claude` → starts the Runner's Claude Code session. Parse `result.agent.pane_id` from the response and keep it (needed for `wait output`/`pane read` below). Rename/confirm its pane label is `runner` (`herdr pane rename <pane-id> runner` if `agent start` didn't already label it).
+2. Once the session is ready for input (wait for a prompt, e.g. `herdr wait output <runner-pane-id> --match ">" --timeout 15000`, mirroring the herdr skill's "spawn a new agent" recipe), `herdr agent send runner "<runner prompt — see below>"`.
+3. After the Runner reports done (see Completion detection), start the Reviewer the same way, in the **same tab**, **same worktree**: `herdr agent start reviewer --cwd <worktree> --tab <tab-id> --split down -- claude` (capture its `pane_id` too), then `herdr agent send reviewer "<reviewer prompt — see below>"`.
 
 ## Data channel — report file + sentinel, not terminal-scraping
 
@@ -81,14 +83,16 @@ A pane has no return value, and scraping structured data out of a terminal is fr
 
 ## Completion detection — sentinel primary, `agent_status` backstop, watch both
 
-- **Primary gate:** `herdr wait output <name> --match "<<<AFK_WORK_(DONE|BLOCKED)>>>" --regex --timeout <T>` — reliable because it's a deterministic emitted string.
-- **Backstop:** `herdr agent get <name>` / `herdr pane list` for `agent_status ∈ {done, blocked}`. `herdr wait agent-status` alone is flaky in practice (timed out in live testing even when the target state was reached) — demote it to corroboration, never the sole gate.
+- **Primary gate:** `herdr wait output <pane-id> --match "<<<AFK_WORK_(DONE|BLOCKED)>>>" --regex --timeout <T>` — reliable because it's a deterministic emitted string. `wait output` takes the literal pane id, not the agent name (see "Names resolve for `agent` subcommands only" above) — use the `pane_id` you captured from `agent start`.
+- **Backstop:** `herdr agent get <name>` / `herdr pane list` for `agent_status ∈ {done, blocked}`. `herdr wait agent-status` alone is flaky in practice (timed out in live testing even when the target state was reached) — demote it to corroboration, never the sole gate. (`agent get` accepts the name; `wait agent-status` needs the pane id, same split as `wait output`.)
 - Watch **both concurrently**, not sentinel-then-status: an agent can go `agent_status: blocked` mid-run (it asked a question) without ever printing the BLOCKED sentinel, and you want to catch that immediately, not after a full timeout. Since you're a sequential CLI-driven agent, "concurrently" means a short-timeout poll loop, not two real threads:
 
 ```bash
+# $NAME = agent name ("runner"/"reviewer"); $PANE_ID = its pane id, captured
+# from `agent start`'s result.agent.pane_id (or re-resolved via `agent get`).
 while true; do
-  if herdr wait output "$NAME" --match '<<<AFK_WORK_(DONE|BLOCKED)>>>' --regex --timeout 20000; then
-    break   # sentinel matched — inspect which one via `herdr pane read "$NAME" --source recent-unwrapped --lines 10`
+  if herdr wait output "$PANE_ID" --match '<<<AFK_WORK_(DONE|BLOCKED)>>>' --regex --timeout 20000; then
+    break   # sentinel matched — inspect which one via `herdr pane read "$PANE_ID" --source recent-unwrapped --lines 10`
   fi
   status=$(herdr agent get "$NAME" | jq -r '.agent_status // .result.agent_status // empty')
   case "$status" in
