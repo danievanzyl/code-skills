@@ -6,6 +6,10 @@ Skills, agents, and orchestration for autonomous (AFK) agents that pick up issue
 
 ### Agent roles
 
+**Orchestrator**:
+The agent that drives a pipeline of other agents for one or more issues — selects the work, spawns the Runner and Reviewer, holds their reported results (PR#, branch, worktree, transcript path), triggers the Evaluator, and owns teardown. Never implements or reviews itself; it is the hub the other roles report back to. Lives in the human's session (in-process subagents in `afk-issue`/`feature-branch-fan-in`; herdr-pane-hosted agents in the herdr variant).
+_Avoid_: driver, coordinator, manager
+
 **Runner**:
 The autonomous agent that selects an issue, implements it, and opens a PR for one unit of work.
 _Avoid_: afk-agent, worker, bot
