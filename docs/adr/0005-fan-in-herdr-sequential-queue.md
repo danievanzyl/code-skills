@@ -48,7 +48,7 @@ Plus one herdr-native constraint not in the seven: **squash-merge waits until th
 
 ## Consequences
 
-- The AC's **concurrency + cap** and **multi-simultaneously-blocked HITL** items are explicitly scoped to **v2**; v1 satisfies the multi-blocked case trivially (≤ 1 active pipeline). HITL notifications/focus in v1 are issue-#-qualified so a workspace holding the active tab plus kept-alive failed tabs stays unambiguous. Tracked as a follow-up.
+- The AC's **concurrency + cap** and **multi-simultaneously-blocked HITL** items are explicitly scoped to **v2**; v1 satisfies the multi-blocked case trivially (≤ 1 active pipeline). HITL notifications/focus in v1 are issue-#-qualified so a workspace holding the active tab plus kept-alive failed tabs stays unambiguous. Tracked in **#61**.
 - **Eval is per-issue, per-role only.** Each issue is a **Run** (`CONTEXT.md`); the consolidated PR → main is **not** a Run (no agent Trajectory produced it — the Orchestrator merges it), so it isn't scored. Queue-level rollup deferred.
 - **gotcha 6 overrides #52**: the queue squash-merges each sub-PR itself rather than leaving it open for a human merge — the single most behavior-changing delta vs the single-issue skill.
 - **No `CONTEXT.md` change**: the Orchestrator entry already reads "drives a pipeline … for one or more issues," so the queue adds workflow mechanics, not new domain vocabulary.
