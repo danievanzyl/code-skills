@@ -163,7 +163,7 @@ On the monitor loop (Completion detection, above) reporting `agent_status: block
 
 ## Pipeline
 
-1. **Preflight** (above), including the workspace-trust ancestor check. Abort with a clear report if anything fails.
+1. **Preflight** (above), including the workspace-trust repo-root check. Abort with a clear report if anything fails.
 2. **Resolve launch flags, write both prompt files, then create the worktree** (Isolation, above): `herdr worktree create --cwd <target-repo> --branch afk/<N>-<slug> --base <base> --label "issue #N" --json`, then `herdr workspace rename <workspace-id> "afk/<repo>#<N>"`. Track the workspace id, tab id, worktree path, and root pane id.
 3. **Start the Runner pane**, labeled `runner`, `--cwd` the shared worktree, with the model + permission flags (Agent control); close the spare root pane; run the trust check, readiness wait, send, submit, and verify-resend choreography (Agent control); this sends the Runner prompt (template below).
 4. **Watch for completion** via the canonical monitor (report-file primary, `agent get` for blocked). Handle any `blocked` per HITL — keep waiting, don't skip ahead.
