@@ -22,6 +22,10 @@ _Avoid_: code-reviewer (that is the implementation name), grader
 The read-only agent that runs as the final stage and *scores* a Run without changing it. Judges the work and the process, never fixes. Distinct from the Reviewer.
 _Avoid_: scorer, auditor, observer
 
+**Engineer** _(planned — not yet built)_:
+A specialized implementer sub-agent a Runner (or Reviewer) delegates a focused slice of work to — e.g. a language- or domain-expert that owns a risky edit. Spawned in-process via the pane agent's own `Task` tool, so it has its own Trajectory nested under the Run. Not part of the current locked pipeline — it is the reason pane agents keep `Task` available (see `afk-issue-herdr`; tracked in #63). When built, wire it into **both** the in-process and herdr variants so the Efficiency dimension stays comparable.
+_Avoid_: worker, specialist, helper
+
 ### Units & artifacts
 
 **Run**:
@@ -57,3 +61,27 @@ _Avoid_: safety, guardrails
 **Efficiency dimension**:
 How much a Run cost — tokens, tool-call steps, and wall-clock time. Interpreted comparatively against like work (same issue over time), never as an absolute score. The signal for whether an agent-prompt change made behaviour better or worse.
 _Avoid_: cost, performance, speed
+
+### Herdr structure
+
+Terms owned by the `herdr` CLI (see `skills/herdr/SKILL.md`); use them **verbatim** — do not coin synonyms like "space". Hierarchy: session → workspace → tab → pane.
+
+**Session** (herdr):
+A persistent herdr multiplexer session (`herdr --session <name>`). The AFK skills only *detect* it (`HERDR_ENV=1`); they never create or manage one. Not the same thing as a Claude Code session — see Pane agent.
+_Avoid_: bare "session" for anything running inside herdr
+
+**Workspace**:
+A herdr project/repo context; holds one or more tabs. An AFK run gets its **own dedicated workspace** the Orchestrator creates and owns, so teardown closes it wholesale without touching the human's panes.
+_Avoid_: space, project
+
+**Tab**:
+A subcontext inside a workspace; holds one or more panes. One tab per issue (`issue #N`).
+_Avoid_: window
+
+**Pane**:
+One terminal inside a tab. One pane per role — `runner` / `reviewer`.
+_Avoid_: split, terminal
+
+**Pane agent**:
+The Claude Code session running inside a pane — a Runner or Reviewer as a full, top-level `claude` process (not an in-process subagent). One pane agent = one Trajectory = one Run participant. When naming the process rather than the role, say "pane agent" or "Claude Code session", **never** bare "session".
+_Avoid_: session, pane session, terminal agent
