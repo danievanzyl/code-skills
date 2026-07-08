@@ -34,6 +34,8 @@ This skill drives `herdr` panes from inside a herdr-managed session. Check `HERD
 | branch             | `afk/<N>-<slug>`                                                |
 | worktree path      | wherever `herdr worktree create` places it (see Isolation)      |
 | report dir         | `~/.afk-herdr/<N>/`                                             |
+| runner model       | `model:` in `agents/afk-task-runner.md` (plugin agent def); pass to `claude --model` — see Model, never hardcode |
+| reviewer model     | `model:` in `agents/code-reviewer.md` (plugin agent def); pass to `claude --model` — see Model, never hardcode |
 | PR# + head branch  | the Runner's **report file**, verified via `gh pr view` — never assumed from a naming convention |
 
 ## Preflight — fail fast, abort on a missing contract
@@ -66,13 +68,21 @@ You (the Orchestrator) own the worktree lifecycle, not the agents:
 
 ## Agent control — prefer the `herdr agent` API
 
-Prefer `herdr agent start <name> --cwd <worktree> --tab <tab-id> --split down -- claude` (+ `agent send`, `agent wait --status`, `agent read`, `agent rename`) over raw `pane split` + `pane run "claude"`. The `agent` API targets by stable name (`runner` / `reviewer`) instead of a pane id that can compact, and herdr already tracks each agent's session/transcript metadata.
+Prefer `herdr agent start <name> --cwd <worktree> --tab <tab-id> --split down -- claude --model <role model>` (+ `agent send`, `agent wait --status`, `agent read`, `agent rename`) over raw `pane split` + `pane run "claude"`. The `agent` API targets by stable name (`runner` / `reviewer`) instead of a pane id that can compact, and herdr already tracks each agent's session/transcript metadata. `<role model>` is resolved per role from the agent defs — see "Model" below; **never launch a bare `-- claude`** (silently runs the interactive default, not the role's pinned model).
 
 **Names resolve for `agent` subcommands only.** `agent get/read/send/rename/wait/focus/attach` all accept the stable name (`runner`/`reviewer`). `pane read`, `wait output`, and `wait agent-status` do **not** — they require the literal pane id, and error `pane_not_found` on a bare agent name. Capture the pane id from `agent start`'s JSON response (`result.agent.pane_id`) — or re-resolve it later via `herdr agent get <name>` → `.agent.pane_id` — and use that id anywhere you'd otherwise pass the name to `pane`/`wait` commands.
 
-1. `herdr agent start runner --cwd <worktree> --tab <tab-id> --split down -- claude` → starts the Runner's Claude Code session. Parse `result.agent.pane_id` from the response and keep it (needed for `wait output`/`pane read` below). Rename/confirm its pane label is `runner` (`herdr pane rename <pane-id> runner` if `agent start` didn't already label it).
+### Model — pin per role from the agent defs, never bare `claude`
+
+A fresh `claude` session in a pane does **not** read agent `.md` frontmatter — only the `Task` tool does. So a bare `-- claude` silently runs the interactive default model, diverging from in-process `afk-issue` (which honours the frontmatter) and **breaking the Efficiency dimension** (`CONTEXT.md`: a Run's cost is only meaningful compared against like work — the herdr and in-process Runs of the same issue must run the *same* model). Pin each role explicitly:
+
+- **Source of truth = the agent def, resolved at runtime — do not hardcode.** Read `model:` from the plugin's `agents/afk-task-runner.md` (Runner) and `agents/code-reviewer.md` (Reviewer) — the same files `afk-issue`'s `Task` tool reads — and pass it verbatim to `claude --model`. Locate them via `${CLAUDE_PLUGIN_ROOT}/agents/<name>.md` (the hooks' convention; fall back to the plugin cache dir if unset). `--model` accepts the alias as-is (e.g. `sonnet`) or a full id (e.g. `claude-sonnet-5`). This keeps herdr auto-synced with `afk-issue` — change the def once, both variants follow.
+- **Fail loud.** If you can't resolve a role's `model:`, **stop and report** — do not fall back to bare `claude`; that silently reintroduces the drift this section exists to kill.
+- **Orchestrator (your own session):** run it on `opus` — its job is coordination, HITL, and reading Scorecards, not implementation. This skill can't set it retroactively; it's the model you *launch* the Orchestrating session with, so start it on `opus` deliberately rather than by default.
+
+1. `herdr agent start runner --cwd <worktree> --tab <tab-id> --split down -- claude --model <runner model>` → starts the Runner's Claude Code session. Parse `result.agent.pane_id` from the response and keep it (needed for `wait output`/`pane read` below). Rename/confirm its pane label is `runner` (`herdr pane rename <pane-id> runner` if `agent start` didn't already label it).
 2. Once the session is ready for input (wait for a prompt, e.g. `herdr wait output <runner-pane-id> --match ">" --timeout 15000`, mirroring the herdr skill's "spawn a new agent" recipe), `herdr agent send runner "<runner prompt — see below>"`.
-3. After the Runner reports done (see Completion detection), start the Reviewer the same way, in the **same tab**, **same worktree**: `herdr agent start reviewer --cwd <worktree> --tab <tab-id> --split down -- claude` (capture its `pane_id` too), then `herdr agent send reviewer "<reviewer prompt — see below>"`.
+3. After the Runner reports done (see Completion detection), start the Reviewer the same way, in the **same tab**, **same worktree**: `herdr agent start reviewer --cwd <worktree> --tab <tab-id> --split down -- claude --model <reviewer model>` (capture its `pane_id` too), then `herdr agent send reviewer "<reviewer prompt — see below>"`.
 
 ## Data channel — report file + sentinel, not terminal-scraping
 
