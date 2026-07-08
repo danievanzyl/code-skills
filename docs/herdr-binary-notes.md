@@ -59,6 +59,7 @@ for command text plus Enter.
 Reporting and releasing an agent's status live under `pane`, not `agent`:
 
 ```
+herdr pane report-agent <pane_id> --source ID --agent LABEL --state idle|working|blocked|unknown [--message TEXT] [--custom-status TEXT] [--seq N] [--agent-session-id ID] [--agent-session-path PATH]
 herdr pane report-agent-session <pane_id> --source ID --agent LABEL [--seq N] [--agent-session-id ID] [--agent-session-path PATH]
 herdr pane release-agent <pane_id> --source ID --agent LABEL [--seq N]
 ```
@@ -66,5 +67,6 @@ herdr pane release-agent <pane_id> --source ID --agent LABEL [--seq N]
 ## other undocumented `pane` verbs
 
 `herdr pane` also has `current`, `layout`, `process-info`, `neighbor`,
-`edges`, `focus`, `resize`, `zoom`, `swap`, and `move` — run `herdr pane`
-with no args for their exact syntax rather than re-documenting each here.
+`edges`, `focus`, `resize`, `zoom`, `swap`, `move`, and `report-metadata` —
+run `herdr pane` with no args for their exact syntax rather than
+re-documenting each here.
