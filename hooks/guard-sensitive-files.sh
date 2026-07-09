@@ -30,10 +30,11 @@ tool=$(printf '%s' "$input" | jq -r '.tool_name // empty')
 # caught (Read of it still is); this is what kills false positives on real code.
 
 # Broad list for real paths (file tools). ($|/) for dir stores, ([^a-z0-9]|$) for
-# filenames; \.env is a prefix match (.env, .env.local, .envrc, .environment).
+# filenames; \.env is a leading-boundary prefix match (.env, .env.local, .envrc,
+# .environment) so it doesn't false-positive on foo.env / aws_key_pair.env.
 DENY_PATHS='\.aws($|/)|\.ssh($|/)|\.gnupg($|/)|\.config/gcloud($|/)|\.kube($|/)|\.docker/config\.json|kubeconfig'
 DENY_PATHS+='|\.netrc([^a-z0-9]|$)|\.git-credentials|\.npmrc([^a-z0-9]|$)|\.pypirc|\.pgpass'
-DENY_PATHS+='|\.env'
+DENY_PATHS+='|(^|[^[:alnum:]_])\.env'
 DENY_PATHS+='|\.pem([^a-z0-9]|$)|\.(key|p12|pfx|keystore|jks)([^a-z0-9]|$)'
 DENY_PATHS+='|id_(rsa|dsa|ecdsa|ed25519)|service[-_]account[^/]*\.json|\.tfstate'
 
@@ -43,7 +44,7 @@ DENY_PATHS+='|id_(rsa|dsa|ecdsa|ed25519)|service[-_]account[^/]*\.json|\.tfstate
 # tf state (`terraform|tofu state pull|show`) dumps secrets to stdout — caught here.
 DENY_BASH='\.aws($|/)|\.ssh($|/)|\.gnupg($|/)|\.config/gcloud($|/)|\.kube($|/)|\.docker/config\.json'
 DENY_BASH+='|(^|[^[:alnum:]_])kubeconfig'
-DENY_BASH+='|(^|[^[:alnum:]_])\.env([^[:alnum:]]|$)'
+DENY_BASH+='|(^|[^[:alnum:]_])\.env'
 DENY_BASH+='|(^|[^[:alnum:]_])\.(netrc|npmrc|pypirc|pgpass)([^[:alnum:]]|$)'
 DENY_BASH+='|(^|[^[:alnum:]_])\.git-credentials'
 DENY_BASH+='|(^|[^[:alnum:]_])id_(rsa|dsa|ecdsa|ed25519)'

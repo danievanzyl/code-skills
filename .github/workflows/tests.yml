@@ -53,6 +53,7 @@ jobs:
           git config --global user.name "CI"
           bash hooks/tests/test-afk-hooks.sh
           bash hooks/tests/test-eval-hooks.sh
+          bash hooks/tests/test-guard-sensitive-files.sh
 
       - name: sync-skills regression tests (offline fixtures)
         run: bash scripts/tests/test-sync-skills.sh
