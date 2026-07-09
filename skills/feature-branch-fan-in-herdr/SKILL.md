@@ -12,7 +12,7 @@ Herdr-native sibling of `feature-branch-fan-in`, as `afk-issue-herdr` is to `afk
 
 ## Composition
 
-- **Per-issue engine = `afk-issue-herdr`** (#52 / [ADR-0004](../../docs/adr/0004-herdr-pane-orchestration.md)): panes, worktree-first isolation, report-file + sentinel data channel, per-role eval, HITL, teardown, model/permission launch policy. Invoked once per issue with the feature branch as its `[base-branch]` arg — this skill does not restate any of that mechanic, only the deltas layered on top.
+- **Per-issue engine = `afk-issue-herdr`** (#52 / [ADR-0004](../../docs/adr/0004-herdr-pane-orchestration.md)): panes, worktree-first isolation, report-file + sentinel data channel, per-role eval, HITL, teardown, model/permission launch policy. Invoked once per issue with the feature branch as its `[base-branch]` arg — this skill does not restate any of that mechanic, only the deltas layered on top. Herdr agent naming (`runner-<tab_id>`/`reviewer-<tab_id>`, #73) is engine-owned and tab-scoped — a v2 (#61) cross-issue-concurrency author must not reintroduce bare `runner`/`reviewer` names.
 - **Outer loop + finish = `feature-branch-fan-in`**: the sequential-queue shape, the seven gotchas, and the consolidated-PR finish. This skill does not restate the gotchas' rationale — see [`feature-branch-fan-in/REFERENCE.md`](../feature-branch-fan-in/REFERENCE.md) for why each exists.
 
 ## Roles (see `CONTEXT.md`)
