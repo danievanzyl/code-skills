@@ -5,7 +5,7 @@ description: Drives a feature-branch fan-in — implements a set of ready-for-ag
 
 # Feature-branch fan-in
 
-Orchestration glue, not a reimplementation. It chains agents/skills you already have — `afk-task-runner`, `code-reviewer` (or `/review`), `git-worktree` — and contributes the wiring + the seven gotchas below. Do not re-grill designs or re-write issues here; those are upstream (`grill-with-docs`, `to-issues`).
+Orchestration glue, not a reimplementation. It chains agents/skills you already have — `afk-task-runner`, `code-reviewer` (or `/review`) — and contributes the wiring + the seven gotchas below. Do not re-grill designs or re-write issues here; those are upstream (`grill-with-docs`, `to-issues`).
 
 ## Preconditions (verify before starting)
 

@@ -4,16 +4,16 @@ description: >-
   Post-merge wrap-up: confirm a PR is merged, update local main, close the worktree + branch,
   then offer to write a handoff doc for the next session. Use when the user says "this is merged",
   "merge and clean up", "merged, clean up", "update main and clean up", "wrap up", "done with this PR",
-  or "this has been merged, what's next". Orchestration glue that chains git-worktree + handoff —
-  do not re-implement either. For multi-repo work it also flags whether a sibling repo's agent now
-  needs a handoff.
+  or "this has been merged, what's next". Closes the worktree/branch itself and chains the handoff
+  skill for the doc — do not re-implement the handoff format. For multi-repo work it also flags
+  whether a sibling repo's agent now needs a handoff.
 argument-hint: "[branch-or-pr] [handoff-topic]"
 allowed-tools: Bash(git *), Bash(gh *), Bash(cat *), Read, Write, Skill
 ---
 
 # wrap-up
 
-The post-merge motion you do by hand every time a PR lands: **confirm merged → update main → close worktree/branch → offer a handoff → say what's next.** Orchestration glue — it leans on `git-worktree` (cleanup) and `handoff` (the doc), it does not reimplement them.
+The post-merge motion you do by hand every time a PR lands: **confirm merged → update main → close worktree/branch → offer a handoff → say what's next.** Orchestration glue — it closes the worktree/branch itself and leans on `handoff` for the doc, it does not reimplement the handoff format.
 
 `$ARGUMENTS` (both optional):
 - `branch-or-pr` — branch name or PR number to wrap up. Default: the current branch / the PR for the current branch.
@@ -23,7 +23,7 @@ The post-merge motion you do by hand every time a PR lands: **confirm merged →
 
 - PR isn't merged yet → that's `gh-draft-pr` (open) or just wait. This skill refuses on an unmerged PR.
 - You only want the handoff doc, no cleanup → call `/handoff` directly.
-- Starting new work → `git-worktree` (new feature).
+- Starting new work → create the branch/worktree yourself; this skill only handles post-merge cleanup.
 
 ## Resolve first — never hardcode
 
@@ -49,26 +49,17 @@ gh pr view "$BRANCH" --json number,state,url -q '"\(.number) \(.state) \(.url)"'
 
 This is the one hard gate. Everything after destroys local state, so never skip it.
 
-### 2. Close the worktree + branch (delegate to `git-worktree`)
+### 2. Close the worktree + branch
 
-Invoke the **git-worktree** skill's "close worktree" path. It runs one bundled helper,
-`scripts/close-worktree.sh`, which does the whole cautious sequence in one call:
-
-1. re-checks the PR is `MERGED` (the gate that makes any force-delete safe) — refuses an `OPEN` PR; refuses a `CLOSED`/no-PR branch unless `--allow-abandoned`
-2. refuses on uncommitted changes unless `--discard-dirty`
-3. removes the worktree
-4. deletes the local branch (`git branch -d`, auto-falling back to `-D` after a squash/rebase merge — **no re-prompting**, because the `MERGED` gate already proved the work landed)
-5. deletes the remote branch idempotently (a no-op when GitHub's auto-delete-on-merge already removed it — never an error)
-6. prunes and prints a summary
-
-So the whole of step 2 is normally just: relay the script's summary, and on a non-zero exit relay its message and let the user decide the next flag (`--allow-abandoned` for an abandoned branch, `--discard-dirty` for local junk). Don't hand-run the individual git commands.
-
-If the project is **not** on the `<repo>/src` worktree layout (plain clone, work done on a branch in place) and you're not delegating to `git-worktree`, do the equivalent inline instead:
+The `MERGED` gate from step 1 is what makes the force-delete below safe — refuse to reach this step on an `OPEN` PR, and get explicit user OK for a `CLOSED`/abandoned branch first. Refuse on uncommitted changes unless the user says to discard them (`git status --porcelain` must be empty).
 
 ```bash
 git checkout "$DEFAULT_BRANCH"
 git fetch origin --prune
 git pull --ff-only origin "$DEFAULT_BRANCH"
+
+# On the <repo>/src worktree layout, also remove the linked worktree:
+git worktree remove <worktree-path>
 
 # Local branch: -d refuses after a squash/rebase merge; the MERGED gate above
 # makes -D safe here, so fall back instead of asking.
@@ -79,9 +70,11 @@ git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1 \
   && git push origin --delete "$BRANCH"
 ```
 
+Report a short summary: worktree removed (if applicable), local branch deleted, remote branch deleted or already gone (that's success, not an error).
+
 ### 3. Update local main
 
-Covered by the worktree close (it pulls src to latest). If you went the inline route above, the `pull --ff-only` already did it. Confirm `git -C <src> log -1 --oneline` shows the merge.
+Already done above — the `pull --ff-only` in step 2 updated local main. Confirm `git log -1 --oneline` shows the merge.
 
 ### 4. Offer the handoff
 
@@ -108,5 +101,5 @@ Next: <e.g. "tf-base agent can now pick up #131 (logs tracer-bullet) — its blo
 - Remote branch delete is idempotent and best-effort: skip it when `ls-remote` shows the branch is already gone (GitHub auto-delete-on-merge). A missing remote branch is success, not an error.
 - Never `git push --force` or touch `main` history.
 - Handoff docs go to the OS temp dir, never committed to the workspace.
-- Don't reimplement worktree cleanup or the handoff format — invoke the existing skills.
+- Don't reimplement the handoff format — invoke the existing `handoff` skill.
 - One handoff question, max. If the user said "just clean up", skip the handoff entirely.

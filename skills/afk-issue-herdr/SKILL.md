@@ -69,7 +69,7 @@ You (the Orchestrator) own the workspace and worktree lifecycle, not the agents.
 4. **Start the Runner immediately** (Agent control, below) so the workspace is never idle-empty between steps 2 and the Runner's first tool call.
 5. Runner and Reviewer **share** this one worktree. The Reviewer therefore **skips `gh pr checkout` entirely** (kills `feature-branch-fan-in` gotcha 3 by construction) — it inherits the Runner's live tree. Before reviewing, the Reviewer must assert a **clean tree** (`git status --porcelain` empty) and **`HEAD == origin PR head`** (`git rev-parse HEAD` == `gh pr view <pr> --json headRefOid -q .headRefOid`), since it's inheriting a tree it didn't check out itself.
 
-Worktree layout is `~/.herdr/worktrees/<repo>/<branch>` — this *is* a de-facto `<repo>/<branch>` sibling layout, matching the `git-worktree` skill's convention closely enough; adopt it as canonical and stop hedging on it.
+Worktree layout is `~/.herdr/worktrees/<repo>/<branch>` — a de-facto `<repo>/<branch>` sibling layout; adopt it as canonical and stop hedging on it.
 
 ## Workspace trust — dialog preflight + defensive fallback
 
