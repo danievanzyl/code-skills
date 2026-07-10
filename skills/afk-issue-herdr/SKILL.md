@@ -145,8 +145,8 @@ while true; do
     echo "done: report file present at $REPORT"
     break
   fi
-  status=$(herdr agent get "$NAME" | jq -r '.agent_status // .result.agent_status // empty')
-  if [[ "$status" == "blocked" ]]; then
+  agent_status=$(herdr agent get "$NAME" | jq -r '.result.agent.agent_status // .agent.agent_status // empty')
+  if [[ "$agent_status" == "blocked" ]]; then
     echo "blocked: $NAME is waiting on human input"
     # handle per HITL below, then keep looping — never abandon the pane agent;
     # a report file can still appear later once the human unblocks it in-pane
