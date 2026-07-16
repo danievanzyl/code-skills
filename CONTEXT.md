@@ -85,3 +85,19 @@ _Avoid_: split, terminal
 **Pane agent**:
 The Claude Code session running inside a pane — a Runner or Reviewer as a full, top-level `claude` process (not an in-process subagent). One pane agent = one Trajectory = one Run participant. When naming the process rather than the role, say "pane agent" or "Claude Code session", **never** bare "session".
 _Avoid_: session, pane session, terminal agent
+
+### Handoff routing
+
+Terms owned by the `handoff-herdr` skill (see [ADR-0007](docs/adr/0007-handoff-herdr-routing.md)); the herdr-native sibling of the plain `handoff` skill.
+
+**Handoff**:
+The compacted document the `handoff` skill produces so a *different* Claude Code session can pick up the work — references artifacts by path/URL, never duplicates them. `handoff-herdr` reuses it verbatim as the payload; the routing is a separate act layered on top. Not the routing itself.
+_Avoid_: summary, context dump, transfer doc
+
+**Handoff target**:
+The pane agent a Handoff is routed to. Auto-selected only when it is a **waiting** agent (`agent_status ∈ {idle, blocked}`) in a herdr workspace whose repo matches the routing session's cwd. A `working` agent is never auto-interrupted; a `done`/`unknown` agent is never auto-selected (its context is stale) — both reachable only by explicit target. When no waiting target matches, one is **spawned** (fresh pane/workspace, clean context) rather than an existing agent reused.
+_Avoid_: recipient, destination pane, receiver
+
+**Offload / Dispatch**:
+The two intents that both drive `handoff-herdr` down one spine (produce → resolve → deliver). **Offload** = the routing session's own context is too large, so it hands off to continue elsewhere and stop. **Dispatch** = routing a next task (a grill, feedback, a spike/prototype test) to an agent that is *waiting* on exactly that. Same mechanism, different reason — not two code paths.
+_Avoid_: push/pull, delegate (reserved for Orchestrator→role spawning)
