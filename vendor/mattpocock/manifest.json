@@ -2,8 +2,8 @@
   "provider": "mattpocock",
   "repo": "mattpocock/skills",
   "ref": "main",
-  "sha": "d574778f94cf620fcc8ce741584093bc650a61d3",
-  "upstreamCommitDate": "2026-07-08T14:20:40+01:00",
+  "sha": "9603c1cc8118d08bc1b3bf34cf714f62178dea3b",
+  "upstreamCommitDate": "2026-07-16T10:03:12+01:00",
   "skills": [
     "ask-matt",
     "code-review",
