@@ -15,6 +15,13 @@
       "ref": "master",
       "license": "AGPL-3.0-or-later",
       "skills": [{ "name": "herdr", "path": "SKILL.md" }]
+    },
+    {
+      "name": "dmmulroy",
+      "repo": "dmmulroy/anti-slop",
+      "ref": "main",
+      "license": "MIT",
+      "skills": [{ "name": "install-anti-slop", "path": "skills/install-anti-slop" }]
     }
   ]
 }
