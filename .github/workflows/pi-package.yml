@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "extensions/**"
+      - "tests/subagents/**"
       - "package.json"
       - "LICENSE"
       - ".github/workflows/pi-package.yml"
@@ -11,6 +12,7 @@ on:
     branches: [main]
     paths:
       - "extensions/**"
+      - "tests/subagents/**"
       - "package.json"
       - "LICENSE"
       - ".github/workflows/pi-package.yml"
@@ -28,6 +30,10 @@ jobs:
         with:
           node-version: 22
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
       - name: Install typecheck dependencies
         run: npm install --no-save --ignore-scripts typescript @types/node @earendil-works/pi-coding-agent
 
@@ -43,8 +49,13 @@ jobs:
           extensions/subagents/index.ts
           extensions/subagents/personas.ts
 
+      - name: Subagent extension regression tests
+        run: bun test tests/subagents/index.test.ts tests/subagents/personas.test.ts
+
       - name: Validate package contents
-        run: npm pack --dry-run
+        run: |
+          npm pack --dry-run --json > package-contents.json
+          node -e 'const files = require("./package-contents.json")[0].files.map(({ path }) => path); if (!files.includes("extensions/subagents/agents/codebase-analyzer.md")) process.exit(1)'
 
       - name: Load package in Pi
         run: npx pi --approve --no-extensions -e . --list-models >/dev/null
