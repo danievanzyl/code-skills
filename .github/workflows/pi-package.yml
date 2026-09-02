@@ -53,7 +53,9 @@ jobs:
         run: bun test tests/subagents/index.test.ts tests/subagents/personas.test.ts
 
       - name: Validate package contents
-        run: npm pack --dry-run
+        run: |
+          npm pack --dry-run --json > package-contents.json
+          node -e 'const files = require("./package-contents.json")[0].files.map(({ path }) => path); if (!files.includes("extensions/subagents/agents/codebase-analyzer.md")) process.exit(1)'
 
       - name: Load package in Pi
         run: npx pi --approve --no-extensions -e . --list-models >/dev/null

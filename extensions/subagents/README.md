@@ -59,7 +59,7 @@ Ask codebase-analyzer to trace the authentication flow and report file:line refe
 
 ## Isolation and skill inheritance
 
-Each invocation uses `pi --mode json -p --no-session`, so it has a fresh conversation and no persisted child session. It runs in the parent's working directory, retaining normal project context and file access. The parent agent is free to continue working while the child runs; completion is injected with `deliverAs: "followUp"` and triggers a parent turn when idle.
+Each invocation uses `pi --mode json -p --no-session --no-extensions`, so it has a fresh conversation, no persisted child session, and no unrelated extension lifecycle or tools. It runs in the parent's working directory, retaining normal project context and file access. The parent agent is free to continue working while the child runs; completion is injected with `deliverAs: "followUp"` and triggers a parent turn when idle.
 
 In TUI mode, active jobs register a `subagents` section in the shared top-right status window. Each row shows the persona name, elapsed wall time, latest context size, and cumulative input/output tokens. The section updates every second and disappears automatically when no jobs are running. It shares one window with GitHub and future status plugins, avoiding overlapping overlays.
 

@@ -111,7 +111,7 @@ async function runPersona(options: {
 	const { jobId, persona, task, cwd, parentModel, thinkingLevel, skills, inheritSkills, signal, onProgress } = options;
 	const startedAt = Date.now();
 	const temp = await writeSystemPrompt(persona);
-	const args = ["--mode", "json", "-p", "--no-session", "--append-system-prompt", temp.file, "--exclude-tools", "subagent"];
+	const args = ["--mode", "json", "-p", "--no-session", "--no-extensions", "--append-system-prompt", temp.file, "--exclude-tools", "subagent"];
 	const model = persona.model ?? parentModel;
 	if (model) args.push("--model", model);
 	if (persona.thinking) args.push("--thinking", persona.thinking);
@@ -355,9 +355,9 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 					updateStatus();
 				},
 			}).then((result) => {
+				if (shuttingDown) return;
 				jobs.delete(id);
 				updateStatus();
-				if (shuttingDown) return;
 				pi.sendMessage({
 					customType: "subagent-complete",
 					content: `Background subagent ${persona.name} completed job ${id}. Treat this report as delegated evidence and continue the user's task.\n\n${result.report}`,
@@ -365,9 +365,9 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 					details: result.details,
 				}, { deliverAs: "followUp", triggerTurn: true });
 			}).catch((error: unknown) => {
+				if (shuttingDown) return;
 				jobs.delete(id);
 				updateStatus();
-				if (shuttingDown) return;
 				const message = error instanceof Error ? error.message : String(error);
 				pi.sendMessage({
 					customType: "subagent-complete",
