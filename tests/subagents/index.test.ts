@@ -143,6 +143,13 @@ describe("subagent persona runtime configuration", () => {
 		expect(args).toContain("--skill");
 	});
 
+	test("keeps extension-provided runtime support available to existing personas", async () => {
+		const cwd = makeProjectPersona("model: extension-provider/custom-model");
+		const args = await dispatch(cwd, {});
+
+		expect(args).not.toContain("--no-extensions");
+	});
+
 	test("leaves thinking unset for a model-pinned persona without a thinking field", async () => {
 		const cwd = makeProjectPersona("model: pinned-model");
 		const args = await dispatch(cwd, {});
