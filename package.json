@@ -1,0 +1,49 @@
+{
+  "name": "@danievanzyl/code-skills",
+  "version": "0.1.42",
+  "description": "Pi extensions for shared status UI, background subagents, GitHub status, and terminal workflow",
+  "keywords": [
+    "pi-package",
+    "pi-coding-agent",
+    "coding-agent",
+    "subagents",
+    "terminal-ui"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "Danie van Zyl",
+    "email": "danie.van.zyl@gmail.com",
+    "url": "https://github.com/danievanzyl"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danievanzyl/code-skills.git"
+  },
+  "homepage": "https://github.com/danievanzyl/code-skills#readme",
+  "bugs": {
+    "url": "https://github.com/danievanzyl/code-skills/issues"
+  },
+  "files": [
+    "extensions",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/status-window/index.ts",
+      "./extensions/github-status-section.ts",
+      "./extensions/picture-status-bar.ts",
+      "./extensions/subagents/index.ts"
+    ]
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

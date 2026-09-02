@@ -1,0 +1,50 @@
+name: pi-package
+
+on:
+  pull_request:
+    paths:
+      - "extensions/**"
+      - "package.json"
+      - "LICENSE"
+      - ".github/workflows/pi-package.yml"
+  push:
+    branches: [main]
+    paths:
+      - "extensions/**"
+      - "package.json"
+      - "LICENSE"
+      - ".github/workflows/pi-package.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install typecheck dependencies
+        run: npm install --no-save --ignore-scripts typescript @types/node @earendil-works/pi-coding-agent
+
+      - name: Typecheck Pi extensions
+        run: >-
+          npx tsc --noEmit --target ES2022 --module NodeNext
+          --moduleResolution NodeNext --skipLibCheck --types node
+          --allowImportingTsExtensions
+          extensions/status-window/index.ts
+          extensions/status-window/api.ts
+          extensions/github-status-section.ts
+          extensions/picture-status-bar.ts
+          extensions/subagents/index.ts
+          extensions/subagents/personas.ts
+
+      - name: Validate package contents
+        run: npm pack --dry-run
+
+      - name: Load package in Pi
+        run: npx pi --approve --no-extensions -e . --list-models >/dev/null

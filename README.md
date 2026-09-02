@@ -1,21 +1,52 @@
-# Claude Code Config
+# Code Skills
 
-Personal configuration for [Claude Code](https://claude.ai/claude-code) — Anthropic's CLI for Claude.
+Personal coding-agent platform for [Claude Code](https://claude.ai/claude-code) and [Pi](https://pi.dev).
 
-## Installing skills
+## Installation
 
-Install skills from this repo with:
+Install skills with:
 
 ```sh
 npx skills@latest add danievanzyl/code-skills
+```
+
+Install the Pi package from npm:
+
+```sh
+pi install npm:@danievanzyl/code-skills
+```
+
+Try the current Git checkout without installing:
+
+```sh
+pi --no-extensions -e .
+```
+
+The Pi package includes a shared fixed status window, GitHub status section, custom editor status bar, background subagents, and bundled GitHub/web research personas. The fixed dock requires Pi's `fullscreen` TUI mode, selectable through `/settings`.
+
+### Publishing the Pi package
+
+The `pi-package` npm keyword makes the published package eligible for [pi.dev/packages](https://pi.dev/packages). Before the first release:
+
+1. Create or select the `@danievanzyl` npm organization/scope.
+2. Publish once locally with `npm login && npm publish --access public`, or add an npm automation token as the repository secret `NPM_TOKEN`.
+3. Later merges to `main` synchronize `package.json` with the Claude plugin version and publish automatically when `NPM_TOKEN` is configured.
+
+Validate before publishing:
+
+```sh
+npm pack --dry-run
+pi --approve --no-extensions -e . --list-models
 ```
 
 ## Structure
 
 | Path | Description |
 |------|-------------|
-| `CLAUDE.md` | Global instructions applied to all sessions |
-| `agents/` | Custom sub-agent definitions (codebase-analyzer, codebase-locator, etc.) |
+| `CLAUDE.md` | Global Claude instructions applied to all sessions |
+| `agents/` | Claude sub-agent definitions |
+| `extensions/` | Pi extensions and bundled Pi subagent personas |
+| `package.json` | npm/Pi package manifest |
 | `skills/` | Reusable skill definitions — hand-authored + vendored (see below) |
 | `commands/` | Custom slash commands |
 | `settings.json` | Claude Code settings |
