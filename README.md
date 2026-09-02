@@ -29,8 +29,9 @@ The Pi package includes a shared fixed status window, GitHub status section, cus
 The `pi-package` npm keyword makes the published package eligible for [pi.dev/packages](https://pi.dev/packages). Before the first release:
 
 1. Create or select the `@danievanzyl` npm organization/scope.
-2. Publish once locally with `npm login && npm publish --access public`, or add an npm automation token as the repository secret `NPM_TOKEN`.
-3. Later merges to `main` synchronize `package.json` with the Claude plugin version and publish automatically when `NPM_TOKEN` is configured.
+2. Create the package with one manual OTP-authenticated release: `npm login && npm publish --access public --otp=<code>`.
+3. In the npm package settings, add a **GitHub Actions trusted publisher** for organization/user `danievanzyl`, repository `code-skills`, workflow `release.yml`, with no environment unless the workflow later uses one.
+4. Later merges to `main` synchronize `package.json` with the Claude plugin version and publish through short-lived OIDC credentials. No npm token is stored in GitHub; delete the old `NPM_TOKEN` secret after trusted publishing is configured.
 
 Validate before publishing:
 
