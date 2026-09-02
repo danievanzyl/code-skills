@@ -2,8 +2,8 @@
   "provider": "mattpocock",
   "repo": "mattpocock/skills",
   "ref": "main",
-  "sha": "d574778f94cf620fcc8ce741584093bc650a61d3",
-  "upstreamCommitDate": "2026-07-08T14:20:40+01:00",
+  "sha": "6654f6b60cd9d5be8b54c6fafe44346dabeb3b76",
+  "upstreamCommitDate": "2026-08-24T15:19:57+01:00",
   "skills": [
     "ask-matt",
     "code-review",
@@ -21,10 +21,13 @@
     "resolving-merge-conflicts",
     "tdd",
     "teach",
+    "to-questionnaire",
     "to-spec",
     "to-tickets",
     "triage",
+    "wait-what",
     "wayfinder",
-    "writing-great-skills"
+    "wizard",
+    "writing-for-agents"
   ]
 }

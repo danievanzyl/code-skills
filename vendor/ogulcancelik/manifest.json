@@ -2,9 +2,7 @@
   "provider": "ogulcancelik",
   "repo": "ogulcancelik/herdr",
   "ref": "master",
-  "sha": "36b2e2f5463139a284483732131ce44977881239",
-  "upstreamCommitDate": "2026-07-09T03:35:35+03:00",
-  "skills": [
-    "herdr"
-  ]
+  "sha": "0cbd1a5aa847ab767334938e3bc858c68e613d70",
+  "upstreamCommitDate": "2026-08-31T14:56:35+02:00",
+  "skills": []
 }
