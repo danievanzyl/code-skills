@@ -3,8 +3,9 @@ name: release
 # Auto-versioning for the marketplace plugin. On every push to main:
 #   1. validate the manifests parse
 #   2. pick the next version (auto patch-bump, or honor a manual bump in plugin.json)
-#   3. write it into plugin.json + marketplace.json so all version fields agree
-#   4. commit the bump (with [skip ci] to avoid re-triggering), tag v<version>, release
+#   3. write it into plugin.json + marketplace.json + package.json
+#   4. publish the Pi npm package when NPM_TOKEN is configured
+#   5. commit the bump (with [skip ci] to avoid re-triggering), tag v<version>, release
 #
 # GitHub Actions natively skips runs whose head commit message contains "[skip ci]",
 # so the bump commit this workflow pushes will NOT trigger another run.
@@ -23,6 +24,8 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,10 +36,15 @@ jobs:
         run: |
           jq empty plugin.json
           jq empty .claude-plugin/marketplace.json
+          jq empty package.json
           # required fields must be present
           test "$(jq -r '.name // empty' plugin.json)" != ""
           test "$(jq -r '.version // empty' plugin.json)" != ""
           test "$(jq -r '.metadata.version // empty' .claude-plugin/marketplace.json)" != ""
+          test "$(jq -r '.name // empty' package.json)" != ""
+          test "$(jq -r '.version // empty' package.json)" != ""
+          jq -e '.keywords | index("pi-package") != null' package.json >/dev/null
+          npm pack --dry-run >/dev/null
 
       - name: Compute next version
         id: ver
@@ -81,6 +89,34 @@ jobs:
           jq --arg v "$v" '.metadata.version = $v | .plugins |= map(if .source == "./" then .version = $v else . end)' \
             .claude-plugin/marketplace.json > "$tmp" && mv "$tmp" .claude-plugin/marketplace.json
 
+          tmp=$(mktemp)
+          jq --arg v "$v" '.version = $v' package.json > "$tmp" && mv "$tmp" package.json
+
+      - name: Set up Node for npm
+        if: steps.ver.outputs.skip == 'false' && env.NPM_TOKEN != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish Pi package
+        if: steps.ver.outputs.skip == 'false' && env.NPM_TOKEN != ''
+        env:
+          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          name=$(jq -r '.name' package.json)
+          version=$(jq -r '.version' package.json)
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version already published"
+          else
+            npm publish --access public --provenance
+          fi
+
+      - name: NPM publishing not configured
+        if: steps.ver.outputs.skip == 'false' && env.NPM_TOKEN == ''
+        run: echo "NPM_TOKEN is not configured; skipping Pi package publication"
+
       - name: Commit, tag, and release
         if: steps.ver.outputs.skip == 'false'
         env:
@@ -92,8 +128,8 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          if ! git diff --quiet -- plugin.json .claude-plugin/marketplace.json; then
-            git add plugin.json .claude-plugin/marketplace.json
+          if ! git diff --quiet -- plugin.json .claude-plugin/marketplace.json package.json; then
+            git add plugin.json .claude-plugin/marketplace.json package.json
             git commit -m "chore(release): v$v [skip ci]"
             git push origin HEAD:main
           fi
