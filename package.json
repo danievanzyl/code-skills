@@ -1,6 +1,6 @@
 {
   "name": "@danievanzyl/code-skills",
-  "version": "0.1.42",
+  "version": "0.1.48",
   "description": "Pi extensions for shared status UI, background subagents, GitHub status, and terminal workflow",
   "keywords": [
     "pi-package",
