@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { CONFIG_DIR_NAME, getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 
 export type PersonaScope = "user" | "project" | "both";
@@ -9,6 +10,8 @@ export interface Persona {
 	description: string;
 	prompt: string;
 	model?: string;
+	thinking?: ThinkingLevel;
+	inheritSkills?: boolean;
 	tools?: string[];
 	filePath: string;
 	source: "pi-package" | "pi-user" | "pi-project";
@@ -18,8 +21,18 @@ type PersonaFrontmatter = {
 	name?: unknown;
 	description?: unknown;
 	model?: unknown;
+	thinking?: unknown;
+	inheritSkills?: unknown;
 	tools?: unknown;
 };
+
+const THINKING_LEVELS = new Set<ThinkingLevel>(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+
+function parseThinking(value: unknown): ThinkingLevel | undefined {
+	return typeof value === "string" && THINKING_LEVELS.has(value as ThinkingLevel)
+		? value as ThinkingLevel
+		: undefined;
+}
 
 const TOOL_ALIASES: Record<string, string | undefined> = {
 	bash: "bash",
@@ -72,6 +85,8 @@ function loadDirectory(dir: string, source: Persona["source"]): Persona[] {
 				model: typeof frontmatter.model === "string" && frontmatter.model !== "inherit"
 					? frontmatter.model
 					: undefined,
+				thinking: parseThinking(frontmatter.thinking),
+				inheritSkills: typeof frontmatter.inheritSkills === "boolean" ? frontmatter.inheritSkills : undefined,
 				tools: parseTools(frontmatter.tools),
 				filePath,
 				source,

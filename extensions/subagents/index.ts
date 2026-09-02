@@ -114,7 +114,8 @@ async function runPersona(options: {
 	const args = ["--mode", "json", "-p", "--no-session", "--append-system-prompt", temp.file, "--exclude-tools", "subagent"];
 	const model = persona.model ?? parentModel;
 	if (model) args.push("--model", model);
-	if (!persona.model && thinkingLevel) args.push("--thinking", thinkingLevel);
+	if (persona.thinking) args.push("--thinking", persona.thinking);
+	else if (!persona.model && thinkingLevel) args.push("--thinking", thinkingLevel);
 	if (persona.tools !== undefined) {
 		if (persona.tools.length) args.push("--tools", persona.tools.join(","));
 		else args.push("--no-tools");
@@ -308,7 +309,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 			persona: Type.Optional(Type.String({ description: "Persona name from a Markdown file; required unless list is true" })),
 			task: Type.Optional(Type.String({ description: "Self-contained task and expected report; required unless list is true" })),
 			scope: Type.Optional(ScopeSchema),
-			inheritSkills: Type.Optional(Type.Boolean({ description: "Pass exactly the parent context's loaded skills to the child (default true)" })),
+			inheritSkills: Type.Optional(Type.Boolean({ description: "Override whether the child inherits the parent context's loaded skills" })),
 			cwd: Type.Optional(Type.String({ description: "Child working directory; defaults to the parent cwd" })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
@@ -347,7 +348,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 				parentModel: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
 				thinkingLevel: ctx.thinkingLevel,
 				skills: [...currentSkills],
-				inheritSkills: params.inheritSkills ?? true,
+				inheritSkills: params.inheritSkills ?? persona.inheritSkills ?? true,
 				signal: controller.signal,
 				onProgress: (usage) => {
 					job.usage = usage;

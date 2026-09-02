@@ -22,7 +22,7 @@ Try the current Git checkout without installing:
 pi --no-extensions -e .
 ```
 
-The Pi package includes a shared fixed status window, GitHub status section, custom editor status bar, background subagents, and bundled GitHub/web research personas. The fixed dock requires Pi's `fullscreen` TUI mode, selectable through `/settings`.
+The Pi package includes a shared fixed status window, GitHub status section, custom editor status bar, background subagents, and bundled local codebase analysis, GitHub research, and web research personas. The fixed dock requires Pi's `fullscreen` TUI mode, selectable through `/settings`.
 
 ### Publishing the Pi package
 
