@@ -98,6 +98,43 @@ async function dispatch(cwd: string, params: Record<string, unknown>, options?: 
 	return (await runDispatch(cwd, params, options)).args;
 }
 
+function registeredSubagentTool(): any {
+	let tool: any;
+	const pi = {
+		events: { on() {} },
+		on() {},
+		registerMessageRenderer() {},
+		registerCommand() {},
+		registerTool(candidate: any) { tool = candidate; },
+	};
+	subagentsExtension(pi as any);
+	return tool;
+}
+
+describe("subagent model guidance", () => {
+	test("names every bundled persona", () => {
+		const description = registeredSubagentTool().parameters.properties.persona.description;
+
+		expect([
+			"codebase-analyzer",
+			"gh-search-researcher",
+			"web-search-researcher",
+		].every((name) => description.includes(name))).toBe(true);
+	});
+
+	test("explains scope as persona source selection", () => {
+		const description = registeredSubagentTool().parameters.properties.scope.description;
+
+		expect(description).toBe("Select persona definition sources, not the project the child works on: omitted/default or user includes bundled and user personas; project selects project-local persona files; both searches both sources. Use cwd to select the child's working directory.");
+	});
+
+	test("directs uncertain callers to list personas", () => {
+		const description = registeredSubagentTool().parameters.properties.list.description;
+
+		expect(description).toBe("List available personas without running one; use list: true when persona availability is uncertain");
+	});
+});
+
 describe("subagent persona runtime configuration", () => {
 	test("applies persona thinking and skill-inheritance defaults", async () => {
 		const cwd = makeProjectPersona("model: pinned-model\nthinking: low\ninheritSkills: false\ntools: read");
