@@ -210,7 +210,9 @@ async function runPersona(options: {
 	}
 }
 
-const ScopeSchema = StringEnum(["user", "project", "both"] as const);
+const ScopeSchema = StringEnum(["user", "project", "both"] as const, {
+	description: "Select persona definition sources, not the project the child works on: omitted/default or user includes bundled and user personas; project selects project-local persona files; both searches both sources. Use cwd to select the child's working directory.",
+});
 
 export default function subagentsExtension(pi: ExtensionAPI) {
 	let currentSkills: Skill[] = [];
@@ -305,8 +307,8 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 		promptSnippet: "Start focused work in a non-blocking isolated Markdown-defined subagent",
 		promptGuidelines: ["Use subagent for focused delegated work. It runs asynchronously; continue useful parent work after dispatch and incorporate the completion message when it arrives."],
 		parameters: Type.Object({
-			list: Type.Optional(Type.Boolean({ description: "List available personas without running one" })),
-			persona: Type.Optional(Type.String({ description: "Persona name from a Markdown file; required unless list is true" })),
+			list: Type.Optional(Type.Boolean({ description: "List available personas without running one; use list: true when persona availability is uncertain" })),
+			persona: Type.Optional(Type.String({ description: "Persona name from a Markdown file; bundled personas: codebase-analyzer, gh-search-researcher, web-search-researcher; required unless list is true" })),
 			task: Type.Optional(Type.String({ description: "Self-contained task and expected report; required unless list is true" })),
 			scope: Type.Optional(ScopeSchema),
 			inheritSkills: Type.Optional(Type.Boolean({ description: "Override whether the child inherits the parent context's loaded skills" })),
