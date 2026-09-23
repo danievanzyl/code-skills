@@ -33,6 +33,7 @@ tools: read, ls, bash
 model: sonnet
 thinking: low
 inheritSkills: false
+extensions: false
 ---
 
 You are a focused code reviewer. Use `rg` for content search and `fd` for file discovery through `bash`. Cite file and line references.
@@ -43,6 +44,8 @@ Use Pi-native tool names in `tools`. For shell-based searching, grant `bash` and
 `thinking` accepts Pi's `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max` levels. A valid persona value is passed through `--thinking`, including when the persona pins a `model`. Without `thinking`, a persona whose model is absent or `inherit` inherits the parent's model and thinking level; a model-pinned persona uses Pi's normal model thinking default. Invalid values are ignored.
 
 `inheritSkills` accepts a boolean persona default. An explicit `subagent` tool-call value takes precedence, followed by the persona value, then the existing `true` default. Invalid non-boolean values are ignored.
+
+`extensions` accepts a boolean. Set it to `false` to run the child with `--no-extensions`, isolating it from unrelated extension lifecycle hooks and tools. Omitted or `true` keeps normal extension discovery, so personas can use extension-registered model providers and tools. Invalid non-boolean values are ignored.
 
 ## Usage
 
@@ -59,7 +62,7 @@ Ask codebase-analyzer to trace the authentication flow and report file:line refe
 
 ## Isolation and skill inheritance
 
-Each invocation uses `pi --mode json -p --no-session --no-extensions`, so it has a fresh conversation, no persisted child session, and no unrelated extension lifecycle or tools. It runs in the parent's working directory, retaining normal project context and file access. The parent agent is free to continue working while the child runs; completion is injected with `deliverAs: "followUp"` and triggers a parent turn when idle.
+Each invocation uses `pi --mode json -p --no-session`, so it has a fresh conversation and no persisted child session. Personas with `extensions: false` also get `--no-extensions`. It runs in the parent's working directory, retaining normal project context and file access. The parent agent is free to continue working while the child runs; completion is injected with `deliverAs: "followUp"` and triggers a parent turn when idle.
 
 In TUI mode, active jobs register a `subagents` section in the shared top-right status window. Each row shows the persona name, elapsed wall time, latest context size, and cumulative input/output tokens. The section updates every second and disappears automatically when no jobs are running. It shares one window with GitHub and future status plugins, avoiding overlapping overlays.
 

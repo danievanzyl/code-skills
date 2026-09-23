@@ -111,7 +111,8 @@ async function runPersona(options: {
 	const { jobId, persona, task, cwd, parentModel, thinkingLevel, skills, inheritSkills, signal, onProgress } = options;
 	const startedAt = Date.now();
 	const temp = await writeSystemPrompt(persona);
-	const args = ["--mode", "json", "-p", "--no-session", "--no-extensions", "--append-system-prompt", temp.file, "--exclude-tools", "subagent"];
+	const args = ["--mode", "json", "-p", "--no-session", "--append-system-prompt", temp.file, "--exclude-tools", "subagent"];
+	if (persona.extensions === false) args.push("--no-extensions");
 	const model = persona.model ?? parentModel;
 	if (model) args.push("--model", model);
 	if (persona.thinking) args.push("--thinking", persona.thinking);
