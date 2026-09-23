@@ -5,8 +5,7 @@
 # Run: bash scripts/tests/test-workflow-runners.sh   (exit 0 = all green)
 set -uo pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # scripts/
-ROOT="$(cd "$HERE/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 fail=0
 ok()  { echo "PASS: $1"; }
 bad() { echo "FAIL: $1"; fail=1; }
