@@ -18,8 +18,10 @@ fail=0
 ok()  { echo "PASS: $1"; }
 bad() { echo "FAIL: $1"; fail=1; }
 
-git config --global user.email >/dev/null 2>&1 || git config --global user.email "ci@example.com"
-git config --global user.name  >/dev/null 2>&1 || git config --global user.name  "CI"
+# Fixture commits need an identity; set it for this process only (never
+# write the real user gitconfig).
+export GIT_AUTHOR_NAME=CI GIT_AUTHOR_EMAIL=ci@example.com
+export GIT_COMMITTER_NAME=CI GIT_COMMITTER_EMAIL=ci@example.com
 
 # --- upstream fixtures -------------------------------------------------
 
