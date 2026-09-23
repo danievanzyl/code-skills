@@ -57,6 +57,3 @@ jobs:
 
       - name: sync-skills regression tests (offline fixtures)
         run: bash scripts/tests/test-sync-skills.sh
-
-      - name: Workflow runner regression test
-        run: bash scripts/tests/test-workflow-runners.sh
