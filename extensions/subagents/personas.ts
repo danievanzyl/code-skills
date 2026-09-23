@@ -12,6 +12,7 @@ export interface Persona {
 	model?: string;
 	thinking?: ThinkingLevel;
 	inheritSkills?: boolean;
+	extensions?: boolean;
 	tools?: string[];
 	filePath: string;
 	source: "pi-package" | "pi-user" | "pi-project";
@@ -23,6 +24,7 @@ type PersonaFrontmatter = {
 	model?: unknown;
 	thinking?: unknown;
 	inheritSkills?: unknown;
+	extensions?: unknown;
 	tools?: unknown;
 };
 
@@ -87,6 +89,7 @@ function loadDirectory(dir: string, source: Persona["source"]): Persona[] {
 					: undefined,
 				thinking: parseThinking(frontmatter.thinking),
 				inheritSkills: typeof frontmatter.inheritSkills === "boolean" ? frontmatter.inheritSkills : undefined,
+				extensions: typeof frontmatter.extensions === "boolean" ? frontmatter.extensions : undefined,
 				tools: parseTools(frontmatter.tools),
 				filePath,
 				source,

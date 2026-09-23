@@ -27,22 +27,23 @@ function projectPersona(frontmatter: string): ReturnType<typeof discoverPersonas
 
 describe("discoverPersonas runtime configuration", () => {
 	test("discovers valid persona thinking and skill-inheritance defaults", () => {
-		const persona = projectPersona("name: test-persona\nthinking: low\ninheritSkills: false");
+		const persona = projectPersona("name: test-persona\nthinking: low\ninheritSkills: false\nextensions: false");
 
 		expect(persona.thinking).toBe("low");
 		expect(persona.inheritSkills).toBe(false);
+		expect(persona.extensions).toBe(false);
 	});
 
 	test("ignores invalid runtime values without dropping any personas", () => {
 		const personas = projectPersonas(
-			"name: invalid-runtime\nthinking: extreme\ninheritSkills: no",
-			"name: unaffected\nthinking: high\ninheritSkills: true",
+			"name: invalid-runtime\nthinking: extreme\ninheritSkills: no\nextensions: no",
+			"name: unaffected\nthinking: high\ninheritSkills: true\nextensions: true",
 		);
 
 		expect(personas.find((persona) => persona.name === "invalid-runtime"))
-			.toMatchObject({ thinking: undefined, inheritSkills: undefined });
+			.toMatchObject({ thinking: undefined, inheritSkills: undefined, extensions: undefined });
 		expect(personas.find((persona) => persona.name === "unaffected"))
-			.toMatchObject({ thinking: "high", inheritSkills: true });
+			.toMatchObject({ thinking: "high", inheritSkills: true, extensions: true });
 	});
 
 	test("discovers the bundled codebase analyzer with scoped runtime configuration", () => {
@@ -53,6 +54,7 @@ describe("discoverPersonas runtime configuration", () => {
 			model: "gpt-5.6-luna",
 			thinking: "low",
 			inheritSkills: false,
+			extensions: false,
 			tools: ["read", "grep", "find", "ls"],
 		});
 	});

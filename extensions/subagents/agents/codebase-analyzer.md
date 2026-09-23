@@ -4,6 +4,7 @@ description: Trace local code implementation and data flow with exact file:line 
 model: gpt-5.6-luna
 thinking: low
 inheritSkills: false
+extensions: false
 tools: read, grep, find, ls
 ---
 
