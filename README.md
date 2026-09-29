@@ -105,6 +105,9 @@ Current providers:
 
 - [`mattpocock/skills`](https://github.com/mattpocock/skills) (MIT)
 - [`ogulcancelik/herdr`](https://github.com/ogulcancelik/herdr) (AGPL-3.0-or-later)
+- [`dmmulroy/anti-slop`](https://github.com/dmmulroy/anti-slop) (MIT)
+- [`emilkowalski/skills`](https://github.com/emilkowalski/skills) (MIT)
+- [`anthropics/skills`](https://github.com/anthropics/skills) (Apache-2.0)
 
 A vendored skill keeps its **own** upstream license (recorded in
 `scripts/skill-sources.json`, `vendor/<provider>/`, and — shipped with the skill —

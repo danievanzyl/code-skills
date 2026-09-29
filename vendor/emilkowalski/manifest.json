@@ -1,0 +1,10 @@
+{
+  "provider": "emilkowalski",
+  "repo": "emilkowalski/skills",
+  "ref": "main",
+  "sha": "d16ebe60d09a5ba2afcb7054ede9d0a10c9f6128",
+  "upstreamCommitDate": "2026-09-24T01:18:27+02:00",
+  "skills": [
+    "apple-design"
+  ]
+}
