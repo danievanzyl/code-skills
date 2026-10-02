@@ -28,6 +28,9 @@
     "README.md",
     "LICENSE"
   ],
+  "dependencies": {
+    "vscode-jsonrpc": "^9.0.3"
+  },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "*",
     "@earendil-works/pi-ai": "*",
@@ -40,7 +43,8 @@
       "./extensions/status-window/index.ts",
       "./extensions/github-status-section.ts",
       "./extensions/picture-status-bar.ts",
-      "./extensions/subagents/index.ts"
+      "./extensions/subagents/index.ts",
+      "./extensions/lsp/index.ts"
     ]
   },
   "publishConfig": {
