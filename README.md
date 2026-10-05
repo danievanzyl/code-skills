@@ -108,12 +108,30 @@ Current providers:
 - [`dmmulroy/anti-slop`](https://github.com/dmmulroy/anti-slop) (MIT)
 - [`emilkowalski/skills`](https://github.com/emilkowalski/skills) (MIT)
 - [`anthropics/skills`](https://github.com/anthropics/skills) (Apache-2.0)
+- [`tt-a1i/archify`](https://github.com/tt-a1i/archify) (MIT code; separate third-party asset terms)
 
 A vendored skill keeps its **own** upstream license (recorded in
 `scripts/skill-sources.json`, `vendor/<provider>/`, and — shipped with the skill —
 `skills/<name>/LICENSE`). This is distinct from the plugin's own MIT license in
 `plugin.json`, which does not relicense vendored content. `herdr` is AGPL-3.0-or-later;
 see [ADR 0003](docs/adr/0003-agpl-skill-in-mit-plugin.md).
+
+### Archify requirements and asset terms
+
+`skills/archify/` preserves the complete upstream executable package. Runtime commands
+require **Node >=18**, with **no npm installation** inside the skill directory.
+Full `finalize` requires an installed **Chrome/Chromium** for its real-browser gate.
+Run the CLI from your working directory using its installed path, as documented
+in [Archify's instructions](skills/archify/SKILL.md).
+
+Upstream delivery behavior is unchanged: `finalize` and `deliver` optionally check an
+upstream update manifest. Set `ARCHIFY_UPDATE_CHECK_DISABLED=1` to disable that
+networking and reminder-state writes. The checker does **not** install updates.
+
+Archify's MIT license covers its own code, not all bundled fonts and brand assets.
+See [third-party notices](skills/archify/THIRD_PARTY_NOTICES.md) for asset licenses
+and trademark restrictions, including Vue artwork's non-commercial/share-alike terms,
+and the [JetBrains Mono SIL Open Font License](skills/archify/assets/JetBrainsMono-OFL.txt).
 
 ## Credits
 

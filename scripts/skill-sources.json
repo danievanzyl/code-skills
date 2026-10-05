@@ -36,6 +36,13 @@
       "ref": "main",
       "license": "Apache-2.0",
       "skills": [{ "name": "frontend-design", "path": "skills/frontend-design" }]
+    },
+    {
+      "name": "tt-a1i",
+      "repo": "tt-a1i/archify",
+      "ref": "main",
+      "license": "MIT",
+      "skills": [{ "name": "archify", "path": "archify" }]
     }
   ]
 }
