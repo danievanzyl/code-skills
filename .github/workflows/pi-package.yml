@@ -6,6 +6,7 @@ on:
       - "extensions/**"
       - "tests/subagents/**"
       - "tests/lsp/**"
+      - "tests/tool-cards/**"
       - "package.json"
       - "LICENSE"
       - ".github/workflows/pi-package.yml"
@@ -15,6 +16,7 @@ on:
       - "extensions/**"
       - "tests/subagents/**"
       - "tests/lsp/**"
+      - "tests/tool-cards/**"
       - "package.json"
       - "LICENSE"
       - ".github/workflows/pi-package.yml"
@@ -51,14 +53,15 @@ jobs:
           extensions/subagents/index.ts
           extensions/subagents/personas.ts
           extensions/lsp/index.ts
+          extensions/tool-cards/index.ts
 
       - name: Pi extension regression tests
-        run: bun test tests/subagents/index.test.ts tests/subagents/personas.test.ts tests/lsp
+        run: bun test tests/subagents/index.test.ts tests/subagents/personas.test.ts tests/lsp tests/tool-cards
 
       - name: Validate package contents
         run: |
           npm pack --dry-run --json > package-contents.json
-          node -e 'const files = require("./package-contents.json")[0].files.map(({ path }) => path); for (const path of ["extensions/subagents/agents/codebase-analyzer.md", "extensions/lsp/index.ts"]) if (!files.includes(path)) process.exit(1)'
+          node -e 'const files = require("./package-contents.json")[0].files.map(({ path }) => path); for (const path of ["extensions/subagents/agents/codebase-analyzer.md", "extensions/lsp/index.ts", "extensions/tool-cards/index.ts"]) if (!files.includes(path)) process.exit(1)'
 
       - name: Load package in Pi
         run: npx pi --approve --no-extensions -e . --list-models >/dev/null
