@@ -15,24 +15,27 @@ export default function (pi: ExtensionAPI) {
     render(width) {
       const children = [row.call, row.result].filter(Boolean) as Component[];
       if (width < 6) return children.flatMap(child => child.render(width));
-      const color = row.error ? 31 : row.partial ? 90 : 36;
+      const command = name === "bash" || name === "powershell";
+      const color = command ? 33 : 35;
+      const statusColor = row.error ? 31 : row.partial ? 90 : color;
       const inner = width - 4;
       const line = (text: string) => {
         const fitted = truncateToWidth(text, inner);
         return tint(color, "│") + " " + fitted + " ".repeat(inner - visibleWidth(fitted)) + " " + tint(color, "│");
       };
       const status = row.error ? "FAILED" : row.partial ? "RUNNING" : "DONE";
+      const titleColor = color;
       const title = name.toUpperCase();
       let top = tint(color, "╭" + "─".repeat(width - 2) + "╮");
       if (variant === "C") {
-        const statusLabel = row.error ? "\x1b[41;97;1m FAILED \x1b[0m" : tint(row.partial ? 90 : 36, status.toLowerCase());
-        const label = truncateToWidth(` ${tint(36, title)} / ${statusLabel} `, width - 4);
+        const statusLabel = row.error ? "\x1b[41;97;1m FAILED \x1b[0m" : tint(statusColor, status.toLowerCase());
+        const label = truncateToWidth(` ${tint(titleColor, title)} / ${statusLabel} `, width - 4);
         top = tint(color, "╭─") + label + tint(color, "─".repeat(Math.max(0, width - 4 - visibleWidth(label))) + "─╮");
       }
       const body = children.flatMap(child => child.render(inner));
       if (variant === "B") {
-        body.unshift(tint(36, title));
-        body.push("", `\x1b[${color + 10};30;1m ${status} \x1b[0m`);
+        body.unshift(tint(titleColor, title));
+        body.push("", `\x1b[${statusColor + 10};30;1m ${status} \x1b[0m`);
       }
       return [top, ...body.map(line), tint(color, "╰" + "─".repeat(width - 2) + "╯")];
     },
@@ -83,7 +86,8 @@ export default function (pi: ExtensionAPI) {
 
   const menu = (ctx: any) => ctx.ui.setWidget("prototype-layout", [
     `THROWAWAY / ${variant}: ${names[variant]} / real Pi rendering, replayed samples`,
-    "/card-variant A|B|C   /   click a tool to expand its native output",
+    tint(35, "/card-variant A|B|C") + "   /   click a tool to expand its native output",
+    tint(33, "Bash border") + "   /   " + tint(35, "Pi tool border") + "   /   " + tint(31, "Failed status"),
   ]);
   pi.on("session_start", (_event, ctx) => menu(ctx));
   pi.registerCommand("card-variant", {
