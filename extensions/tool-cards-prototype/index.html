@@ -1,0 +1,140 @@
+<!doctype html>
+<!-- THROWAWAY: Three tool-output layouts inside the same Pi transcript, selected by ?variant=A|B|C. Not a live Pi renderer. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prototype: Pi tool cards</title>
+<style>
+:root { color-scheme: dark; --bg:#282434; --text:#eeeaf4; --cyan:#b9f2f0; --muted:#93909e; --purple:#b3a0df; --green:#2b4032; --red:#f08b94; --gray:#aaa6b4; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.4 "SFMono-Regular",Menlo,Consolas,monospace; }
+button,select { font:inherit; color:inherit; background:var(--bg); border:1px solid var(--muted); border-radius:4px; padding:5px 10px; cursor:pointer; }
+button:hover { border-color:var(--cyan); }
+button:focus-visible,select:focus-visible,summary:focus-visible { outline:2px solid var(--cyan); outline-offset:4px; }
+.controls { display:flex; gap:14px; flex-wrap:wrap; align-items:center; padding:18px 24px; border-bottom:1px solid #484253; font-size:12px; color:var(--muted); }
+.controls strong { color:var(--text); font-weight:normal; margin-right:auto; }
+label { display:flex; gap:8px; align-items:center; }
+.transcript { padding:36px 24px 150px; margin:auto; }
+.transcript.narrow { max-width:80ch; }
+.transcript.mobile { max-width:40ch; }
+.card { border:1px solid var(--cyan); border-radius:5px; padding:12px 14px; margin-bottom:28px; overflow-wrap:anywhere; }
+.crew { margin-bottom:48px; }
+.title { color:var(--cyan); font-weight:bold; }
+.field { display:grid; grid-template-columns:10ch minmax(0,1fr); }
+.muted { color:var(--muted); }
+.path { color:var(--purple); }
+.badge { display:inline-block; background:var(--cyan); color:var(--bg); padding:0 1ch; font-weight:bold; }
+.raw { margin-left:1ch; color:var(--muted); }
+pre { font:inherit; margin:0; white-space:pre-wrap; overflow-wrap:anywhere; }
+.output { margin-top:18px; }
+.duration { color:var(--muted); margin-top:18px; }
+summary { cursor:pointer; list-style:none; }
+summary::-webkit-details-marker { display:none; }
+summary .hint { color:var(--muted); font-size:12px; margin-left:1ch; }
+.preview { color:var(--muted); margin-top:18px; }
+.reply { margin:36px 0; }
+.pending { border-color:var(--gray); }
+.pending .badge { background:var(--gray); }
+.failed { border-color:var(--red); }
+.failed .badge { background:var(--red); }
+.error { color:var(--red); }
+.variant-b .card:not(.crew) .title { margin-bottom:6px; }
+.variant-b .card:not(.crew) .output { padding-top:12px; border-top:1px solid #484253; }
+.variant-b .card:not(.crew) footer { margin-top:14px; }
+.variant-c .tool { position:relative; padding:20px 14px 12px; margin-top:36px; }
+.variant-c .ribbon { position:absolute; top:-12px; left:12px; background:var(--bg); padding:0 8px; display:flex; gap:12px; align-items:center; }
+.variant-c .ribbon .muted { font-size:12px; }
+.variant-c .tool footer { margin-top:12px; padding-top:8px; border-top:1px solid #484253; font-size:12px; color:var(--muted); }
+.baseline .tool { background:var(--green); border-color:transparent; border-radius:0; }
+.baseline .tool.failed { background:#4a2c35; }
+.baseline .tool.pending { background:#35313e; }
+.switcher { position:fixed; bottom:22px; left:50%; transform:translateX(-50%); display:flex; gap:16px; align-items:center; border:1px solid var(--cyan); border-radius:30px; background:#191620; box-shadow:0 4px 24px #0008; padding:10px 14px; max-width:calc(100vw - 24px); z-index:1; }
+.switcher button { border:0; border-radius:50%; background:#373140; min-width:34px; }
+.switcher #variant { min-width:190px; text-align:center; font-size:13px; }
+#state { display:block; font-size:10px; color:var(--muted); text-align:center; margin-top:3px; }
+@media(max-width:600px) { body { font-size:13px; } .controls { padding:12px; } .transcript { padding:24px 12px 130px; } .card { padding:10px; } .switcher { gap:8px; } .switcher #variant { min-width:170px; } }
+</style>
+</head>
+<body>
+<header class="controls">
+  <strong>Throwaway preview. Static transcript, not a live Pi renderer.</strong>
+  <label>Command <select id="command-state"><option value="done">Succeeded</option><option value="pending">Running</option><option value="failed">Failed</option></select></label>
+  <label>Width <select id="width"><option value="wide">Fit window</option><option value="narrow">80 columns</option><option value="mobile">40 columns</option></select></label>
+  <button id="baseline" aria-pressed="false">Compare original</button>
+</header>
+<main class="transcript" id="transcript">
+  <section class="card crew" aria-label="Existing Crew Message reference">
+    <div class="title">CREW MESSAGE</div>
+    <div class="field"><span class="muted">message</span><span>20261011T095313Z-abec4acb</span></div>
+    <div><span class="badge">CREW MSG</span><span class="raw">shepard msg: 20261011T095313Z-abec4acb</span></div>
+  </section>
+  <div id="tools"></div>
+  <p class="reply">Ready. Invoke <span class="path">/skill:grilling</span> when you want to begin.</p>
+</main>
+<nav class="switcher" aria-label="Prototype variants">
+  <button id="previous" aria-label="Previous variant">←</button>
+  <div><div id="variant" aria-live="polite"></div><output id="state"></output></div>
+  <button id="next" aria-label="Next variant">→</button>
+</nav>
+<script>
+const variants = { A:'Frame only', B:'Title, fields and badge', C:'Inline header and footer' };
+let variant = new URLSearchParams(location.search).get('variant') || 'A';
+if (!(variant in variants)) variant = 'A';
+let baseline = false;
+const commandState = document.querySelector('#command-state');
+const width = document.querySelector('#width');
+const tools = document.querySelector('#tools');
+const reads = [
+  '~/.shepard/run/code-skills-seat-2026-10-11-pi-plugin/inbox/20261011T095313Z-abec4acb.md',
+  '~/.shepard/run/code-skills-seat-2026-10-11-pi-plugin/briefing.md'
+];
+const command = 'mkdir -p /Users/danie/.shepard/run/code-skills-seat-2026-10-11-pi-plugin/inbox/done && mv\n/Users/danie/.shepard/run/code-skills-seat-2026-10-11-pi-plugin/inbox/20261011T095313Z-abec4acb.md\n/Users/danie/.shepard/run/code-skills-seat-2026-10-11-pi-plugin/inbox/done/';
+const status = () => ({done:'DONE',pending:'RUNNING',failed:'FAILED'})[commandState.value];
+const escape = text => text.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+const preview = i => `<pre class="preview">${i === 0 ? 'You are crewmate code-skills-seat-2026-10-11-pi-plugin.\nRead the briefing. State that you are ready, then wait for the Captain.' : '# Seat briefing: code-skills\n\nRequested purpose: /skill:grilling on pi plugin.\nEstablish the plugin’s purpose and scope with the Captain.'}</pre>`;
+const result = () => commandState.value === 'failed'
+  ? '<pre class="error">mv: rename inbox/message.md to inbox/done/message.md: Permission denied\nCommand exited with code 1</pre>'
+  : `<pre class="muted">${commandState.value === 'pending' ? '(waiting for output)' : '(no output)'}</pre>`;
+function VariantA() {
+  return reads.map((path,i) => `<section class="card tool"><details><summary><b>read</b> <span class="path">${path}</span><span class="hint">expand</span></summary>${preview(i)}</details></section>`).join('') +
+    `<section class="card tool ${commandState.value}"><pre><b>$ ${escape(command)}</b></pre><div class="output">${result()}</div><div class="duration">${commandState.value === 'pending' ? 'Elapsed 1.2s' : 'Took 0.0s'}</div></section>`;
+}
+function VariantB() {
+  return reads.map((path,i) => `<section class="card tool"><div class="title">READ</div><div class="field"><span class="muted">path</span><span class="path">${path}</span></div><details class="output"><summary><span class="muted">Text loaded</span><span class="hint">expand</span></summary>${preview(i)}</details><footer><span class="badge">READ</span><span class="raw">completed</span></footer></section>`).join('') +
+    `<section class="card tool ${commandState.value}"><div class="title">COMMAND</div><div class="field"><span class="muted">command</span><pre>${escape(command)}</pre></div><div class="output">${result()}</div><footer><span class="badge">${status()}</span><span class="raw">${commandState.value === 'pending' ? 'elapsed 1.2s' : 'took 0.0s'}</span></footer></section>`;
+}
+function VariantC() {
+  return reads.map((path,i) => `<section class="card tool"><div class="ribbon"><b class="title">READ</b><span class="muted">completed</span></div><details><summary><span class="path">${path}</span><span class="hint">expand</span></summary>${preview(i)}</details><footer>Text loaded</footer></section>`).join('') +
+    `<section class="card tool ${commandState.value}"><div class="ribbon"><b class="title">COMMAND</b><span class="muted">${status().toLowerCase()}</span></div><pre>${escape(command)}</pre><div class="output">${result()}</div><footer>${commandState.value === 'pending' ? 'Elapsed 1.2s' : 'Took 0.0s'}</footer></section>`;
+}
+function render() {
+  document.body.className = `variant-${baseline ? 'a' : variant.toLowerCase()}${baseline ? ' baseline' : ''}`;
+  document.querySelector('#transcript').className = `transcript ${width.value}`;
+  tools.innerHTML = baseline ? VariantA() : ({A:VariantA,B:VariantB,C:VariantC})[variant]();
+  document.querySelector('#variant').textContent = `${variant}: ${variants[variant]}`;
+  const state = {variant, command:commandState.value, width:width.value, originalBands:baseline};
+  document.querySelector('#state').textContent = `${commandState.value} / ${width.value} / ${baseline ? 'original bands' : 'outlined'}`;
+  document.querySelector('#baseline').setAttribute('aria-pressed', String(baseline));
+  console.log('Prototype state', state);
+}
+function cycle(delta) {
+  const keys = Object.keys(variants);
+  variant = keys[(keys.indexOf(variant)+delta+keys.length)%keys.length];
+  const url = new URL(location.href);
+  url.searchParams.set('variant', variant);
+  history.replaceState(null,'',url);
+  render();
+}
+document.querySelector('#previous').onclick = () => cycle(-1);
+document.querySelector('#next').onclick = () => cycle(1);
+document.querySelector('#baseline').onclick = () => { baseline=!baseline; render(); };
+commandState.onchange = width.onchange = render;
+document.addEventListener('keydown', event => {
+  if (event.target.closest('input,textarea,select,[contenteditable]')) return;
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); cycle(event.key === 'ArrowLeft' ? -1 : 1); }
+});
+render();
+</script>
+</body>
+</html>
