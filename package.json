@@ -44,7 +44,8 @@
       "./extensions/github-status-section.ts",
       "./extensions/picture-status-bar.ts",
       "./extensions/subagents/index.ts",
-      "./extensions/lsp/index.ts"
+      "./extensions/lsp/index.ts",
+      "./extensions/tool-cards/index.ts"
     ]
   },
   "publishConfig": {
