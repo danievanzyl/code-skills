@@ -113,6 +113,53 @@ test("inline images are displayed once after the textual frame and image toggles
 	} finally { setCapabilities(previous); }
 });
 
+test("image-aware native results retain their payload and metadata when wrapped", () => {
+	const previous = getCapabilities();
+	const output = { content: [
+		{ type: "text" as const, text: "pixel caption" },
+		{ type: "image" as const, mimeType: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2S8AAAAASUVORK5CYII=" },
+	], details: { caption: "native metadata" }, isError: false };
+	const native: ToolRenderers = {
+		renderCall: () => new Text("native call", 0, 0),
+		renderResult(result, _options, _theme, context) {
+			return new Text([
+				...result.content.map(block => block.type === "image" ? `${block.mimeType}: ${block.data}` : block.text),
+				`metadata: ${result.details.caption}`,
+				`original payload: ${result.content === output.content && result.details === output.details}`,
+				`showImages: ${context.showImages}`,
+			].join("\n"), 0, 0);
+		},
+	};
+	try {
+		for (const images of ["iterm2", null] as const) {
+			setCapabilities({ images, trueColor: true, hyperlinks: false });
+			const card = execution("image-aware", {}, native);
+			const baseline = new ToolExecutionComponent("image-aware", "image-aware", {}, {}, { ...native, renderShell: "self" }, { requestRender() {} } as TUI, process.cwd());
+			card.updateResult(output);
+			baseline.updateResult(output);
+			for (const show of [true, false, true]) {
+				card.setShowImages(show);
+				baseline.setShowImages(show);
+				const lines = card.render(180);
+				const bottom = lines.findIndex(line => plain(line).startsWith("╰"));
+				const body = lines.slice(2, bottom).map(line => plain(line).slice(2, -2).trimEnd());
+				expect(body).toEqual(baseline.render(176).slice(1, 7).map(line => plain(line).trimEnd()));
+				expect(body).toEqual([
+					"native call", "pixel caption",
+					"image/png: iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2S8AAAAASUVORK5CYII=",
+					"metadata: native metadata", "original payload: true", `showImages: ${show}`,
+				]);
+				const inline = lines.filter(line => line.includes("]1337;File="));
+				expect(inline).toHaveLength(images && show ? 1 : 0);
+				if (inline.length) {
+					expect(lines.indexOf(inline[0])).toBeGreaterThan(bottom);
+					expect(inline[0]).not.toContain("│");
+				}
+			}
+		}
+	} finally { setCapabilities(previous); }
+});
+
 test("native calls, previews, syntax, diffs, warnings and elapsed time survive framing and expansion", () => {
 	const cwd = process.cwd();
 	for (const [name, native, args, output] of [

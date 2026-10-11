@@ -66,8 +66,8 @@ export default function toolCards(pi: ExtensionAPI) {
 			},
 			renderResult(result, options, _theme, context) {
 				const row = rowFor(context);
-				// The outer Pi component owns inline images. Keep only their native text fallback when hidden or unsupported.
-				const content = context.showImages && getCapabilities().images
+				// Preserve native renderer payloads. Only generic fallbacks omit images displayed by the outer Pi component.
+				const content = !native?.renderResult && context.showImages && getCapabilities().images
 					? result.content.filter(block => block.type !== "image") : result.content;
 				row.content.updateResult({ ...result, content, isError: context.isError, durationMs: context.durationMs }, options.isPartial);
 				return empty;
