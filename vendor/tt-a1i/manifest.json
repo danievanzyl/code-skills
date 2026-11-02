@@ -2,8 +2,8 @@
   "provider": "tt-a1i",
   "repo": "tt-a1i/archify",
   "ref": "main",
-  "sha": "81c6be8d87090670c45d08a8f97f9d29c5af0bec",
-  "upstreamCommitDate": "2026-10-25T23:52:06+08:00",
+  "sha": "a4065941f12be7967436261d9934784e381d423c",
+  "upstreamCommitDate": "2026-10-31T11:32:39+08:00",
   "skills": [
     "archify"
   ]

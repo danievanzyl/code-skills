@@ -2,8 +2,8 @@
   "provider": "anthropics",
   "repo": "anthropics/skills",
   "ref": "main",
-  "sha": "dbd4588f9e1033efb41dad4bef2f7947c8993d44",
-  "upstreamCommitDate": "2026-10-09T18:45:49Z",
+  "sha": "ca45fc496a3436251f191354091d557da31c15b5",
+  "upstreamCommitDate": "2026-10-28T12:20:38-07:00",
   "skills": [
     "frontend-design"
   ]
