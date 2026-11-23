@@ -2,8 +2,8 @@
   "provider": "dmmulroy",
   "repo": "dmmulroy/anti-slop",
   "ref": "main",
-  "sha": "13909c9e07590f5a85d93c62712259fe14a883f7",
-  "upstreamCommitDate": "2026-10-13T20:18:33-04:00",
+  "sha": "63dbb09f73438e550a6991dc6d778f979ffbf183",
+  "upstreamCommitDate": "2026-11-20T08:21:42-05:00",
   "skills": [
     "install-anti-slop"
   ]
